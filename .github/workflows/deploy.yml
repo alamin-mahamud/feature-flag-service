@@ -1,0 +1,128 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'dev-v*'
+
+env:
+  REGION: us-central1
+  IMAGE_REPO: ${{ vars.GCP_PROJECT_ID }}/feature-flag-service/api
+
+jobs:
+  push-image:
+    name: Build & push Docker image
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGION }}-docker.pkg.dev/${{ env.IMAGE_REPO }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha,prefix=sha-
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy to staging
+    needs: push-image
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run (staging)
+        run: |
+          gcloud run deploy feature-flag-service-staging \
+            --image "${{ needs.push-image.outputs.image }}" \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --traffic=100
+
+  deploy-production:
+    name: Deploy to production (canary 10%)
+    needs: [push-image, deploy-staging]
+    runs-on: ubuntu-latest
+    environment: production
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Get current stable revision
+        id: stable
+        run: |
+          STABLE=$(gcloud run revisions list \
+            --service=feature-flag-service-production \
+            --region=${{ env.REGION }} \
+            --filter="status.conditions.type=Active AND status.conditions.status=True" \
+            --sort-by="~metadata.creationTimestamp" \
+            --limit=1 \
+            --format="value(metadata.name)" 2>/dev/null || echo "")
+          echo "revision=$STABLE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy canary (10% traffic)
+        run: |
+          gcloud run deploy feature-flag-service-production \
+            --image "${{ needs.push-image.outputs.image }}" \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --no-traffic
+
+          NEW_REVISION=$(gcloud run revisions list \
+            --service=feature-flag-service-production \
+            --region=${{ env.REGION }} \
+            --sort-by="~metadata.creationTimestamp" \
+            --limit=1 \
+            --format="value(metadata.name)")
+
+          if [ -n "${{ steps.stable.outputs.revision }}" ]; then
+            gcloud run services update-traffic feature-flag-service-production \
+              --region=${{ env.REGION }} \
+              --to-revisions="${NEW_REVISION}=10,${{ steps.stable.outputs.revision }}=90"
+          else
+            gcloud run services update-traffic feature-flag-service-production \
+              --region=${{ env.REGION }} \
+              --to-revisions="${NEW_REVISION}=100"
+          fi
+
+      - name: Print rollback command
+        run: |
+          echo "To rollback: gcloud run services update-traffic feature-flag-service-production --region=${{ env.REGION }} --to-revisions=${{ steps.stable.outputs.revision }}=100"
+          echo "To promote canary: gcloud run services update-traffic feature-flag-service-production --region=${{ env.REGION }} --to-latest"

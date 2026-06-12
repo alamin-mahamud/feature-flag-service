@@ -1,0 +1,6 @@
+project_id      = "your-gcp-project-id"
+region          = "us-central1"
+image           = "us-central1-docker.pkg.dev/your-gcp-project-id/feature-flag-service/api:v1.0.0"
+db_password     = "change-me"
+canary_percent  = 10
+stable_revision = "feature-flag-service-production-00001-abc"

@@ -1,0 +1,4 @@
+project_id  = "your-gcp-project-id"
+region      = "us-central1"
+image       = "us-central1-docker.pkg.dev/your-gcp-project-id/feature-flag-service/api:latest"
+db_password = "change-me"
