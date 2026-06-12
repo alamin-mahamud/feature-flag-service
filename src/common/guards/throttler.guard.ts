@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
-import { TenantRequest } from '../types/tenant-request';
+import type { TenantRequest } from '../types/tenant-request';
 
 @Injectable()
 export class TenantThrottlerGuard extends ThrottlerGuard {

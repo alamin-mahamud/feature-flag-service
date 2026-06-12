@@ -14,7 +14,7 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
-import { TenantRequest } from '../common/types/tenant-request';
+import type { TenantRequest } from '../common/types/tenant-request';
 import { EvaluationService } from './evaluation.service';
 import { EvaluateDto } from './dto/evaluate.dto';
 import { EvaluateBulkDto } from './dto/evaluate-bulk.dto';

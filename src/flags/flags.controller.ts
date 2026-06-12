@@ -22,7 +22,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
-import { TenantRequest } from '../common/types/tenant-request';
+import type { TenantRequest } from '../common/types/tenant-request';
 import { FlagsService } from './flags.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateFlagDto } from './dto/create-flag.dto';
