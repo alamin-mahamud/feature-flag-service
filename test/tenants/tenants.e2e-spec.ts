@@ -6,6 +6,8 @@ import {
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { TransformInterceptor } from '../../src/common/interceptors/transform.interceptor';
+import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter';
 
 describe('Tenants (e2e)', () => {
   let app: NestFastifyApplication;
@@ -20,9 +22,9 @@ describe('Tenants (e2e)', () => {
       new FastifyAdapter(),
     );
     app.setGlobalPrefix('api/v1', { exclude: ['health'] });
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalInterceptors(new TransformInterceptor());
+    app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
@@ -38,6 +40,9 @@ describe('Tenants (e2e)', () => {
     await prisma.tenant.deleteMany();
   });
 
+  // Helpers
+  const parse = (res: any) => JSON.parse(res.body);
+
   // Cycle 1: tracer bullet
   it('POST /api/v1/tenants → 201 with id, name, api_key', async () => {
     const res = await app.inject({
@@ -47,10 +52,10 @@ describe('Tenants (e2e)', () => {
     });
 
     expect(res.statusCode).toBe(201);
-    const body = JSON.parse(res.body);
-    expect(body.id).toBeDefined();
-    expect(body.name).toBe('test-app');
-    expect(body.api_key).toBeDefined();
+    const { data } = parse(res);
+    expect(data.id).toBeDefined();
+    expect(data.name).toBe('test-app');
+    expect(data.api_key).toBeDefined();
   });
 
   // Cycle 2: environments auto-created
@@ -61,9 +66,9 @@ describe('Tenants (e2e)', () => {
       payload: { name: 'test-app' },
     });
 
-    const body = JSON.parse(res.body);
-    expect(body.environments).toHaveLength(3);
-    const names = body.environments.map((e: any) => e.name);
+    const { data } = parse(res);
+    expect(data.environments).toHaveLength(3);
+    const names = data.environments.map((e: any) => e.name);
     expect(names).toContain('development');
     expect(names).toContain('staging');
     expect(names).toContain('production');
@@ -77,8 +82,7 @@ describe('Tenants (e2e)', () => {
       payload: { name: 'test-app' },
     });
 
-    const body = JSON.parse(res.body);
-    expect(body.api_key).toMatch(/^ff-/);
+    expect(parse(res).data.api_key).toMatch(/^ff-/);
   });
 
   // Cycle 4: api_key is stored hashed — raw key not in DB
@@ -89,7 +93,7 @@ describe('Tenants (e2e)', () => {
       payload: { name: 'test-app' },
     });
 
-    const { id, api_key } = JSON.parse(res.body);
+    const { id, api_key } = parse(res).data;
     const tenant = await prisma.tenant.findUnique({ where: { id } });
     expect(tenant!.apiKeyHash).not.toBe(api_key);
     expect(tenant!.apiKeyHash).toHaveLength(64); // sha256 hex = 64 chars
@@ -102,7 +106,7 @@ describe('Tenants (e2e)', () => {
       url: '/api/v1/tenants',
       payload: { name: 'test-app' },
     });
-    const { id, api_key } = JSON.parse(createRes.body);
+    const { id, api_key } = parse(createRes).data;
 
     const res = await app.inject({
       method: 'GET',
@@ -114,13 +118,13 @@ describe('Tenants (e2e)', () => {
   });
 
   // Cycle 6: no api_key → 401
-  it('no Authorization header → 401', async () => {
+  it('no Authorization header → 401 with UNAUTHORIZED code', async () => {
     const createRes = await app.inject({
       method: 'POST',
       url: '/api/v1/tenants',
       payload: { name: 'test-app' },
     });
-    const { id } = JSON.parse(createRes.body);
+    const { id } = parse(createRes).data;
 
     const res = await app.inject({
       method: 'GET',
@@ -128,16 +132,17 @@ describe('Tenants (e2e)', () => {
     });
 
     expect(res.statusCode).toBe(401);
+    expect(parse(res).error.code).toBe('UNAUTHORIZED');
   });
 
   // Cycle 7: invalid api_key → 401
-  it('invalid api_key → 401', async () => {
+  it('invalid api_key → 401 with UNAUTHORIZED code', async () => {
     const createRes = await app.inject({
       method: 'POST',
       url: '/api/v1/tenants',
       payload: { name: 'test-app' },
     });
-    const { id } = JSON.parse(createRes.body);
+    const { id } = parse(createRes).data;
 
     const res = await app.inject({
       method: 'GET',
@@ -146,30 +151,23 @@ describe('Tenants (e2e)', () => {
     });
 
     expect(res.statusCode).toBe(401);
+    expect(parse(res).error.code).toBe('UNAUTHORIZED');
   });
 
   // Cycle 8: two tenants → unique keys
   it('two tenants → each gets a unique api_key', async () => {
     const [r1, r2] = await Promise.all([
-      app.inject({
-        method: 'POST',
-        url: '/api/v1/tenants',
-        payload: { name: 'app-one' },
-      }),
-      app.inject({
-        method: 'POST',
-        url: '/api/v1/tenants',
-        payload: { name: 'app-two' },
-      }),
+      app.inject({ method: 'POST', url: '/api/v1/tenants', payload: { name: 'app-one' } }),
+      app.inject({ method: 'POST', url: '/api/v1/tenants', payload: { name: 'app-two' } }),
     ]);
 
-    const key1 = JSON.parse(r1.body).api_key;
-    const key2 = JSON.parse(r2.body).api_key;
+    const key1 = parse(r1).data.api_key;
+    const key2 = parse(r2).data.api_key;
     expect(key1).not.toBe(key2);
   });
 
   // Duplicate name → 409
-  it('POST /api/v1/tenants with duplicate name → 409', async () => {
+  it('POST duplicate name → 409 CONFLICT', async () => {
     await app.inject({
       method: 'POST',
       url: '/api/v1/tenants',
@@ -183,6 +181,23 @@ describe('Tenants (e2e)', () => {
     });
 
     expect(res.statusCode).toBe(409);
-    expect(JSON.parse(res.body).message).toMatch(/already taken/);
+    const { error } = parse(res);
+    expect(error.code).toBe('CONFLICT');
+    expect(error.message).toMatch(/already taken/);
+  });
+
+  // Validation error → structured details
+  it('POST missing name → 400 BAD_REQUEST with details', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/tenants',
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+    const { error } = parse(res);
+    expect(error.code).toBe('BAD_REQUEST');
+    expect(error.message).toBe('Validation failed');
+    expect(error.details).toBeDefined();
   });
 });
