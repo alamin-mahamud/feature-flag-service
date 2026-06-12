@@ -36,8 +36,13 @@ export class TenantsService {
         })),
       };
     } catch (err) {
-      if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new ConflictException(`Tenant name '${dto.name}' is already taken`);
+      if (
+        err instanceof PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          `Tenant name '${dto.name}' is already taken`,
+        );
       }
       throw err;
     }

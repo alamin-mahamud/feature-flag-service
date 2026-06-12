@@ -12,7 +12,9 @@ import { TenantThrottlerGuard } from './common/guards/throttler.guard';
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: Number(process.env.THROTTLE_LIMIT ?? 100) }]),
+    ThrottlerModule.forRoot([
+      { ttl: 60000, limit: Number(process.env.THROTTLE_LIMIT ?? 100) },
+    ]),
     PrismaModule,
     CacheModule,
     AuditModule,

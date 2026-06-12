@@ -43,7 +43,11 @@ export class EvaluationService {
     const out: Record<string, unknown> = {};
 
     for (const row of rows) {
-      const { value } = evaluate(toFlagInput(row), dto.userId, dto.context ?? {});
+      const { value } = evaluate(
+        toFlagInput(row),
+        dto.userId,
+        dto.context ?? {},
+      );
       out[row.flag.key] = value;
     }
 
@@ -59,7 +63,10 @@ export class EvaluationService {
     await this.cache.delByPattern(`flags:${tenantId}:*`);
   }
 
-  private async loadFlags(tenantId: string, environment: string): Promise<FlagEnvRow[]> {
+  private async loadFlags(
+    tenantId: string,
+    environment: string,
+  ): Promise<FlagEnvRow[]> {
     const cacheKey = `flags:${tenantId}:${environment}`;
     const cached = await this.cache.get<CachedFlags>(cacheKey);
     if (cached) return cached;
@@ -76,7 +83,7 @@ export class EvaluationService {
     });
 
     await this.cache.set(cacheKey, rows, 60);
-    return rows as FlagEnvRow[];
+    return rows;
   }
 }
 

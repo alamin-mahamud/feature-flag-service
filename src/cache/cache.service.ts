@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import Redis from 'ioredis';
 
 @Injectable()
@@ -10,7 +15,10 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     const url = process.env.REDIS_URL ?? 'redis://localhost:6379';
     try {
-      this.client = new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 1 });
+      this.client = new Redis(url, {
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+      });
       await this.client.connect();
       this.connected = true;
       this.logger.log('Redis connected');

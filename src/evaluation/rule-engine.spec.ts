@@ -33,7 +33,9 @@ describe('computeBucket', () => {
 
   it('different users produce spread of buckets', () => {
     const buckets = new Set(
-      Array.from({ length: 30 }, (_, i) => computeBucket('my-flag', `user-${i}`)),
+      Array.from({ length: 30 }, (_, i) =>
+        computeBucket('my-flag', `user-${i}`),
+      ),
     );
     expect(buckets.size).toBeGreaterThan(15);
   });
@@ -51,7 +53,11 @@ describe('computeBucket', () => {
 
 describe('evaluate — disabled flag', () => {
   it('disabled flag returns defaultValue with reason DISABLED', () => {
-    const result = evaluate(flag({ enabled: false, defaultValue: false }), 'u1', {});
+    const result = evaluate(
+      flag({ enabled: false, defaultValue: false }),
+      'u1',
+      {},
+    );
     expect(result).toEqual({ value: false, reason: 'DISABLED' });
   });
 
@@ -88,7 +94,10 @@ describe('evaluate — user overrides', () => {
 
   it('overridden user false value wins over rollout', () => {
     const result = evaluate(
-      flag({ rolloutPercentage: 100, rules: { userOverrides: { bob: false } } }),
+      flag({
+        rolloutPercentage: 100,
+        rules: { userOverrides: { bob: false } },
+      }),
       'bob',
       {},
     );
@@ -97,7 +106,10 @@ describe('evaluate — user overrides', () => {
 
   it('non-overridden user falls through to rollout', () => {
     const result = evaluate(
-      flag({ rolloutPercentage: 100, rules: { userOverrides: { alice: true } } }),
+      flag({
+        rolloutPercentage: 100,
+        rules: { userOverrides: { alice: true } },
+      }),
       'charlie',
       {},
     );
@@ -114,7 +126,12 @@ describe('evaluate — context rules', () => {
         rolloutPercentage: 0,
         rules: {
           contextRules: [
-            { field: 'plan', operator: 'eq', value: 'premium', rolloutPercentage: 100 },
+            {
+              field: 'plan',
+              operator: 'eq',
+              value: 'premium',
+              rolloutPercentage: 100,
+            },
           ],
         },
       }),
@@ -131,7 +148,12 @@ describe('evaluate — context rules', () => {
         rolloutPercentage: 0,
         rules: {
           contextRules: [
-            { field: 'plan', operator: 'eq', value: 'premium', rolloutPercentage: 100 },
+            {
+              field: 'plan',
+              operator: 'eq',
+              value: 'premium',
+              rolloutPercentage: 100,
+            },
           ],
         },
       }),
@@ -147,7 +169,12 @@ describe('evaluate — context rules', () => {
         rolloutPercentage: 0,
         rules: {
           contextRules: [
-            { field: 'plan', operator: 'neq', value: 'free', rolloutPercentage: 100 },
+            {
+              field: 'plan',
+              operator: 'neq',
+              value: 'free',
+              rolloutPercentage: 100,
+            },
           ],
         },
       }),
@@ -184,7 +211,12 @@ describe('evaluate — context rules', () => {
         rolloutPercentage: 0,
         rules: {
           contextRules: [
-            { field: 'country', operator: 'in', value: ['BD', 'IN'], rolloutPercentage: 100 },
+            {
+              field: 'country',
+              operator: 'in',
+              value: ['BD', 'IN'],
+              rolloutPercentage: 100,
+            },
           ],
         },
       }),
@@ -200,7 +232,12 @@ describe('evaluate — context rules', () => {
         rolloutPercentage: 0,
         rules: {
           contextRules: [
-            { field: 'plan', operator: 'eq', value: 'premium', rolloutPercentage: 0 },
+            {
+              field: 'plan',
+              operator: 'eq',
+              value: 'premium',
+              rolloutPercentage: 0,
+            },
           ],
         },
       }),
@@ -216,7 +253,12 @@ describe('evaluate — context rules', () => {
         rolloutPercentage: 0,
         rules: {
           contextRules: [
-            { field: 'plan', operator: 'eq', value: 'premium', rolloutPercentage: 100 },
+            {
+              field: 'plan',
+              operator: 'eq',
+              value: 'premium',
+              rolloutPercentage: 100,
+            },
           ],
         },
       }),
@@ -232,7 +274,11 @@ describe('evaluate — context rules', () => {
 describe('evaluate — rollout percentage', () => {
   it('100% rollout always returns true for boolean flags', () => {
     for (let i = 0; i < 20; i++) {
-      const result = evaluate(flag({ rolloutPercentage: 100 }), `user-${i}`, {});
+      const result = evaluate(
+        flag({ rolloutPercentage: 100 }),
+        `user-${i}`,
+        {},
+      );
       expect(result).toEqual({ value: true, reason: 'ROLLOUT' });
     }
   });
@@ -322,7 +368,12 @@ describe('evaluate — priority order', () => {
         rules: {
           userOverrides: { alice: false },
           contextRules: [
-            { field: 'plan', operator: 'eq', value: 'premium', rolloutPercentage: 100 },
+            {
+              field: 'plan',
+              operator: 'eq',
+              value: 'premium',
+              rolloutPercentage: 100,
+            },
           ],
         },
       }),
@@ -340,7 +391,12 @@ describe('evaluate — priority order', () => {
         rolloutPercentage: 0,
         rules: {
           contextRules: [
-            { field: 'plan', operator: 'eq', value: 'premium', rolloutPercentage: 100 },
+            {
+              field: 'plan',
+              operator: 'eq',
+              value: 'premium',
+              rolloutPercentage: 100,
+            },
           ],
         },
       }),

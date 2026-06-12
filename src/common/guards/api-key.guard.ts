@@ -6,14 +6,19 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TenantRequest } from '../types/tenant-request';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   constructor(private readonly prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
-    const authHeader: string | undefined = request.headers['authorization'];
+    const request = context
+      .switchToHttp()
+      .getRequest<
+        TenantRequest & { headers: Record<string, string | undefined> }
+      >();
+    const authHeader = request.headers['authorization'];
 
     if (!authHeader?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Missing API key');

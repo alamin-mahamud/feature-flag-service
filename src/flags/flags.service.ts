@@ -77,7 +77,10 @@ export class FlagsService {
 
       return result;
     } catch (err) {
-      if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (
+        err instanceof PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
         throw new ConflictException(
           `Flag key '${dto.key}' already exists for this tenant`,
         );
@@ -128,7 +131,12 @@ export class FlagsService {
     });
   }
 
-  async update(tenantId: string, key: string, dto: UpdateFlagDto, changedBy: string) {
+  async update(
+    tenantId: string,
+    key: string,
+    dto: UpdateFlagDto,
+    changedBy: string,
+  ) {
     const flag = await this.findOrFail(tenantId, key);
 
     const environment = await this.prisma.environment.findFirst({
@@ -138,7 +146,10 @@ export class FlagsService {
 
     const oldFe = await this.prisma.flagEnvironment.findUnique({
       where: {
-        flagId_environmentId: { flagId: flag.id, environmentId: environment.id },
+        flagId_environmentId: {
+          flagId: flag.id,
+          environmentId: environment.id,
+        },
       },
     });
 
@@ -170,7 +181,11 @@ export class FlagsService {
     };
 
     const oldValue = oldFe
-      ? { enabled: oldFe.enabled, rolloutPercentage: oldFe.rolloutPercentage, rules: oldFe.rules }
+      ? {
+          enabled: oldFe.enabled,
+          rolloutPercentage: oldFe.rolloutPercentage,
+          rules: oldFe.rules,
+        }
       : null;
 
     await this.audit.log({
@@ -180,7 +195,11 @@ export class FlagsService {
       action: 'updated',
       changedBy,
       oldValue,
-      newValue: { enabled: fe.enabled, rolloutPercentage: fe.rolloutPercentage, rules: fe.rules },
+      newValue: {
+        enabled: fe.enabled,
+        rolloutPercentage: fe.rolloutPercentage,
+        rules: fe.rules,
+      },
     });
 
     return result;

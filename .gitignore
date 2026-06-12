@@ -42,3 +42,6 @@ prisma/seed.d.ts
 
 # typescript incremental build info
 tsconfig.build.tsbuildinfo
+
+# local docs (not for review)
+docs/evaluation-logic.md

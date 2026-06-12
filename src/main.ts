@@ -45,7 +45,7 @@ async function bootstrap() {
     .setTitle('Feature Flag Service')
     .setDescription(
       'Multi-tenant feature flag and remote config service. ' +
-      'Authenticate with a Bearer API key returned on tenant creation.',
+        'Authenticate with a Bearer API key returned on tenant creation.',
     )
     .setVersion('1.0')
     .addBearerAuth()
@@ -60,4 +60,4 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
-bootstrap();
+void bootstrap();

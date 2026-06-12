@@ -2,7 +2,10 @@ import { IsIn, IsObject, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class EvaluateBulkDto {
-  @ApiProperty({ enum: ['development', 'staging', 'production'], example: 'production' })
+  @ApiProperty({
+    enum: ['development', 'staging', 'production'],
+    example: 'production',
+  })
   @IsString()
   @IsIn(['development', 'staging', 'production'])
   environment: string;

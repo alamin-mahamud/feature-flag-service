@@ -2,7 +2,10 @@ import { IsIn, IsObject, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class EvaluateDto {
-  @ApiProperty({ enum: ['development', 'staging', 'production'], example: 'production' })
+  @ApiProperty({
+    enum: ['development', 'staging', 'production'],
+    example: 'production',
+  })
   @IsString()
   @IsIn(['development', 'staging', 'production'])
   environment: string;
@@ -15,7 +18,10 @@ export class EvaluateDto {
   @IsString()
   userId: string;
 
-  @ApiPropertyOptional({ example: { plan: 'premium', country: 'US' }, description: 'Arbitrary attributes for context rule matching' })
+  @ApiPropertyOptional({
+    example: { plan: 'premium', country: 'US' },
+    description: 'Arbitrary attributes for context rule matching',
+  })
   @IsOptional()
   @IsObject()
   context?: Record<string, unknown>;

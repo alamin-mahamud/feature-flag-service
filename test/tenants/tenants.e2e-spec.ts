@@ -22,7 +22,13 @@ describe('Tenants (e2e)', () => {
       new FastifyAdapter(),
     );
     app.setGlobalPrefix('api/v1', { exclude: ['health'] });
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
     app.useGlobalInterceptors(new TransformInterceptor());
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
@@ -157,8 +163,16 @@ describe('Tenants (e2e)', () => {
   // Cycle 8: two tenants → unique keys
   it('two tenants → each gets a unique api_key', async () => {
     const [r1, r2] = await Promise.all([
-      app.inject({ method: 'POST', url: '/api/v1/tenants', payload: { name: 'app-one' } }),
-      app.inject({ method: 'POST', url: '/api/v1/tenants', payload: { name: 'app-two' } }),
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/tenants',
+        payload: { name: 'app-one' },
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/tenants',
+        payload: { name: 'app-two' },
+      }),
     ]);
 
     const key1 = parse(r1).data.api_key;

@@ -24,9 +24,10 @@ export class AuditService {
         environmentId: params.environmentId ?? null,
         action: params.action,
         changedBy: params.changedBy,
-        oldValue: params.oldValue !== undefined
-          ? (params.oldValue as Prisma.InputJsonValue)
-          : undefined,
+        oldValue:
+          params.oldValue !== undefined
+            ? (params.oldValue as Prisma.InputJsonValue)
+            : undefined,
         newValue: params.newValue as Prisma.InputJsonValue,
       },
     });

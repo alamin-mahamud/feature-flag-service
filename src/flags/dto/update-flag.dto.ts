@@ -12,7 +12,10 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateFlagDto {
-  @ApiProperty({ enum: ['development', 'staging', 'production'], example: 'production' })
+  @ApiProperty({
+    enum: ['development', 'staging', 'production'],
+    example: 'production',
+  })
   @IsString()
   @IsIn(['development', 'staging', 'production'])
   environment: string;
@@ -31,7 +34,17 @@ export class UpdateFlagDto {
   rolloutPercentage?: number;
 
   @ApiPropertyOptional({
-    example: { userOverrides: { alice: true }, contextRules: [{ field: 'plan', operator: 'eq', value: 'premium', rolloutPercentage: 100 }] },
+    example: {
+      userOverrides: { alice: true },
+      contextRules: [
+        {
+          field: 'plan',
+          operator: 'eq',
+          value: 'premium',
+          rolloutPercentage: 100,
+        },
+      ],
+    },
     description: 'User overrides and context-based targeting rules',
   })
   @IsOptional()

@@ -10,8 +10,16 @@ export class TenantsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a tenant', description: 'Creates a new tenant and provisions development, staging, and production environments. Returns a one-time API key.' })
-  @ApiResponse({ status: 201, description: 'Tenant created. The api_key is shown once — store it securely.' })
+  @ApiOperation({
+    summary: 'Create a tenant',
+    description:
+      'Creates a new tenant and provisions development, staging, and production environments. Returns a one-time API key.',
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Tenant created. The api_key is shown once — store it securely.',
+  })
   @ApiResponse({ status: 400, description: 'Validation error' })
   @ApiResponse({ status: 409, description: 'Tenant name already taken' })
   create(@Body() dto: CreateTenantDto) {

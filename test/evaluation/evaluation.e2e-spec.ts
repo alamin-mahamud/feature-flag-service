@@ -22,7 +22,13 @@ describe('Evaluation (e2e)', () => {
       new FastifyAdapter(),
     );
     app.setGlobalPrefix('api/v1', { exclude: ['health'] });
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
     app.useGlobalInterceptors(new TransformInterceptor());
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
@@ -96,7 +102,11 @@ describe('Evaluation (e2e)', () => {
       method: 'POST',
       url: '/api/v1/evaluate',
       headers: { Authorization: `Bearer ${apiKey}` },
-      payload: { environment: 'production', flagKey: 'dark-mode', userId: 'u1' },
+      payload: {
+        environment: 'production',
+        flagKey: 'dark-mode',
+        userId: 'u1',
+      },
     });
 
     expect(res.statusCode).toBe(200);
@@ -119,7 +129,11 @@ describe('Evaluation (e2e)', () => {
       method: 'POST',
       url: '/api/v1/evaluate',
       headers: { Authorization: `Bearer ${apiKey}` },
-      payload: { environment: 'production', flagKey: 'beta', userId: 'any-user' },
+      payload: {
+        environment: 'production',
+        flagKey: 'beta',
+        userId: 'any-user',
+      },
     });
 
     const { data } = parse(res);
@@ -165,9 +179,24 @@ describe('Evaluation (e2e)', () => {
     };
 
     const [r1, r2, r3] = await Promise.all([
-      app.inject({ method: 'POST', url: '/api/v1/evaluate', headers: { Authorization: `Bearer ${apiKey}` }, payload }),
-      app.inject({ method: 'POST', url: '/api/v1/evaluate', headers: { Authorization: `Bearer ${apiKey}` }, payload }),
-      app.inject({ method: 'POST', url: '/api/v1/evaluate', headers: { Authorization: `Bearer ${apiKey}` }, payload }),
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/evaluate',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        payload,
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/evaluate',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        payload,
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/evaluate',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        payload,
+      }),
     ]);
 
     const v1 = parse(r1).data.value;
@@ -191,12 +220,18 @@ describe('Evaluation (e2e)', () => {
           method: 'POST',
           url: '/api/v1/evaluate',
           headers: { Authorization: `Bearer ${apiKey}` },
-          payload: { environment: 'production', flagKey: 'half', userId: `user-${i}` },
+          payload: {
+            environment: 'production',
+            flagKey: 'half',
+            userId: `user-${i}`,
+          },
         }),
       ),
     );
 
-    const trueCount = results.filter((r) => parse(r).data.value === true).length;
+    const trueCount = results.filter(
+      (r) => parse(r).data.value === true,
+    ).length;
     expect(trueCount).toBeGreaterThanOrEqual(35);
     expect(trueCount).toBeLessThanOrEqual(65);
   });
@@ -214,7 +249,11 @@ describe('Evaluation (e2e)', () => {
       method: 'POST',
       url: '/api/v1/evaluate',
       headers: { Authorization: `Bearer ${apiKey}` },
-      payload: { environment: 'production', flagKey: 'checkout', userId: 'alice' },
+      payload: {
+        environment: 'production',
+        flagKey: 'checkout',
+        userId: 'alice',
+      },
     });
 
     const { data } = parse(res);
@@ -230,7 +269,12 @@ describe('Evaluation (e2e)', () => {
       rolloutPercentage: 0,
       rules: {
         contextRules: [
-          { field: 'plan', operator: 'eq', value: 'premium', rolloutPercentage: 100 },
+          {
+            field: 'plan',
+            operator: 'eq',
+            value: 'premium',
+            rolloutPercentage: 100,
+          },
         ],
       },
     });
@@ -290,7 +334,7 @@ describe('Evaluation (e2e)', () => {
 
   // Cycle 9: evaluate unknown flag → 404
   it('evaluate unknown flag → 404 NOT_FOUND', async () => {
-    const { id: tenantId, api_key: apiKey } = await createTenant('test-app');
+    const { api_key: apiKey } = await createTenant('test-app');
 
     const res = await app.inject({
       method: 'POST',

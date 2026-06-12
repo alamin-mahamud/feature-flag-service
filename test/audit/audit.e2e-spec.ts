@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
@@ -15,9 +18,17 @@ describe('Audit Trail (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
     app.setGlobalPrefix('api/v1', { exclude: ['health'] });
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
     app.useGlobalInterceptors(new TransformInterceptor());
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
@@ -52,7 +63,12 @@ describe('Audit Trail (e2e)', () => {
       method: 'POST',
       url: `/api/v1/tenants/${tenantId}/flags`,
       headers: { Authorization: `Bearer ${apiKey}` },
-      payload: { key, name: key.replace(/-/g, ' '), type: 'boolean', defaultValue: false },
+      payload: {
+        key,
+        name: key.replace(/-/g, ' '),
+        type: 'boolean',
+        defaultValue: false,
+      },
     });
     return parse(res).data;
   }
@@ -88,7 +104,11 @@ describe('Audit Trail (e2e)', () => {
       method: 'PUT',
       url: `/api/v1/tenants/${tenantId}/flags/my-flag`,
       headers: { Authorization: `Bearer ${apiKey}` },
-      payload: { environment: 'production', enabled: true, rolloutPercentage: 50 },
+      payload: {
+        environment: 'production',
+        enabled: true,
+        rolloutPercentage: 50,
+      },
     });
 
     const res = await app.inject({
@@ -103,8 +123,8 @@ describe('Audit Trail (e2e)', () => {
     expect(updateEntry).toBeDefined();
     expect(updateEntry.oldValue).toBeDefined();
     expect(updateEntry.newValue).toBeDefined();
-    expect((updateEntry.newValue as any).enabled).toBe(true);
-    expect((updateEntry.newValue as any).rolloutPercentage).toBe(50);
+    expect(updateEntry.newValue.enabled).toBe(true);
+    expect(updateEntry.newValue.rolloutPercentage).toBe(50);
   });
 
   // Cycle 3: archive adds third entry, entries are chronological
@@ -116,7 +136,11 @@ describe('Audit Trail (e2e)', () => {
       method: 'PUT',
       url: `/api/v1/tenants/${tenantId}/flags/my-flag`,
       headers: { Authorization: `Bearer ${apiKey}` },
-      payload: { environment: 'production', enabled: true, rolloutPercentage: 50 },
+      payload: {
+        environment: 'production',
+        enabled: true,
+        rolloutPercentage: 50,
+      },
     });
 
     await app.inject({

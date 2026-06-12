@@ -1,16 +1,19 @@
-import { ExecutionContext, Injectable } from '@nestjs/common';
-import { ThrottlerGuard, ThrottlerLimitDetail } from '@nestjs/throttler';
+import { Injectable } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
+import { TenantRequest } from '../types/tenant-request';
 
 @Injectable()
 export class TenantThrottlerGuard extends ThrottlerGuard {
-  protected async getTracker(req: Record<string, any>): Promise<string> {
-    return req.tenant?.id ?? req.ip ?? 'anonymous';
+  protected getTracker(req: Record<string, unknown>): Promise<string> {
+    const tenant = (req as unknown as TenantRequest).tenant;
+    return Promise.resolve(
+      tenant?.id ?? (req['ip'] as string | undefined) ?? 'anonymous',
+    );
   }
 
-  protected async getErrorMessage(
-    _context: ExecutionContext,
-    _detail: ThrottlerLimitDetail,
-  ): Promise<string> {
-    return 'Rate limit exceeded. Maximum 100 requests per minute per tenant.';
+  protected getErrorMessage(): Promise<string> {
+    return Promise.resolve(
+      'Rate limit exceeded. Maximum 100 requests per minute per tenant.',
+    );
   }
 }

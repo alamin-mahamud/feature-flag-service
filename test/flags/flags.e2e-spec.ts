@@ -22,7 +22,13 @@ describe('Flags (e2e)', () => {
       new FastifyAdapter(),
     );
     app.setGlobalPrefix('api/v1', { exclude: ['health'] });
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
     app.useGlobalInterceptors(new TransformInterceptor());
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
@@ -75,7 +81,12 @@ describe('Flags (e2e)', () => {
       method: 'POST',
       url: `/api/v1/tenants/${tenantId}/flags`,
       headers: { Authorization: `Bearer ${apiKey}` },
-      payload: { key: 'dark-mode', name: 'Dark Mode', type: 'boolean', defaultValue: false },
+      payload: {
+        key: 'dark-mode',
+        name: 'Dark Mode',
+        type: 'boolean',
+        defaultValue: false,
+      },
     });
 
     expect(res.statusCode).toBe(201);
@@ -95,7 +106,12 @@ describe('Flags (e2e)', () => {
       method: 'POST',
       url: `/api/v1/tenants/${tenantId}/flags`,
       headers: { Authorization: `Bearer ${apiKey}` },
-      payload: { key: 'beta-feature', name: 'Beta Feature', type: 'boolean', defaultValue: false },
+      payload: {
+        key: 'beta-feature',
+        name: 'Beta Feature',
+        type: 'boolean',
+        defaultValue: false,
+      },
     });
 
     const { data } = parse(res);
@@ -176,7 +192,11 @@ describe('Flags (e2e)', () => {
       method: 'PUT',
       url: `/api/v1/tenants/${tenantId}/flags/dark-mode`,
       headers: { Authorization: `Bearer ${apiKey}` },
-      payload: { environment: 'production', enabled: true, rolloutPercentage: 25 },
+      payload: {
+        environment: 'production',
+        enabled: true,
+        rolloutPercentage: 25,
+      },
     });
 
     expect(res.statusCode).toBe(200);
@@ -214,7 +234,12 @@ describe('Flags (e2e)', () => {
       method: 'POST',
       url: `/api/v1/tenants/${tenantId}/flags`,
       headers: { Authorization: `Bearer ${apiKey}` },
-      payload: { key: 'dark-mode', name: 'Dark Mode v2', type: 'boolean', defaultValue: false },
+      payload: {
+        key: 'dark-mode',
+        name: 'Dark Mode v2',
+        type: 'boolean',
+        defaultValue: false,
+      },
     });
 
     expect(res.statusCode).toBe(409);
