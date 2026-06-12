@@ -167,4 +167,22 @@ describe('Tenants (e2e)', () => {
     const key2 = JSON.parse(r2.body).api_key;
     expect(key1).not.toBe(key2);
   });
+
+  // Duplicate name → 409
+  it('POST /api/v1/tenants with duplicate name → 409', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/tenants',
+      payload: { name: 'duplicate-app' },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/tenants',
+      payload: { name: 'duplicate-app' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).message).toMatch(/already taken/);
+  });
 });

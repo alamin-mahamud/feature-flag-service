@@ -78,6 +78,28 @@
           ]
         },
         {
+          "name": "POST /tenants → 409 duplicate name",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"my-app\" }" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('message says already taken', () => {",
+                  "  pm.expect(pm.response.json().message).to.match(/already taken/i);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "POST /tenants → 400 missing name",
           "request": {
             "method": "POST",
