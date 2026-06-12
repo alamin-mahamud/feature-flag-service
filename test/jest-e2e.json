@@ -6,6 +6,5 @@
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
-  "testPathPattern": "test/",
-  "setupFiles": ["<rootDir>/test/setup.ts"]
+"setupFiles": ["<rootDir>/test/setup.ts"]
 }
