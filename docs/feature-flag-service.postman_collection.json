@@ -2,20 +2,61 @@
   "info": {
     "name": "Feature Flag Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Multi-tenant feature flag service — all endpoints with happy path and edge cases."
+    "description": "Run folders top-to-bottom. Each folder depends on variables set by earlier folders.\n\nFlow: Health \u2192 Tenants \u2192 Auth \u2192 Flags(Create\u2192Configure\u2192Read\u2192Archive) \u2192 Evaluation \u2192 Audit \u2192 Tenant Isolation\n\nRequired: app running on localhost:3000 (`make up` or `make dev` + `make db-up`)\n\nEvery run creates fresh tenants (names are timestamped) so re-runs never conflict."
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
-    { "key": "tenantId", "value": "", "type": "string" },
-    { "key": "apiKey", "value": "", "type": "string" },
-    { "key": "flagKey", "value": "dark-mode", "type": "string" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "tenantId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tenantName",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "otherTenantId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "otherApiKey",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "_tenantName",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "_otherTenantName",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "_deterministicResult",
+      "value": "",
+      "type": "string"
+    }
   ],
   "item": [
     {
-      "name": "Health",
+      "name": "00 \u00b7 Health",
       "item": [
         {
-          "name": "GET /health → 200 ok",
+          "name": "GET /health \u2192 200 ok (no auth required)",
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/health"
@@ -26,11 +67,10 @@
               "script": {
                 "exec": [
                   "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('status ok', () => {",
-                  "  const b = pm.response.json();",
-                  "  pm.expect(b.status).to.eql('ok');",
-                  "  pm.expect(b.timestamp).to.be.a('string');",
-                  "});"
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('wrapped in success envelope', () => pm.expect(success).to.be.true);",
+                  "pm.test('rd.status ok', () => pm.expect(rd.status).to.eql('ok'));",
+                  "pm.test('rd.timestamp present', () => pm.expect(rd.timestamp).to.be.a('string'));"
                 ]
               }
             }
@@ -39,51 +79,75 @@
       ]
     },
     {
-      "name": "Tenants",
+      "name": "01 \u00b7 Tenants",
       "item": [
         {
-          "name": "POST /tenants → 201 create + save key",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/api/v1/tenants",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"my-app\"\n}"
-            }
-          },
+          "name": "POST /tenants \u2192 201 created (saves tenantId + apiKey)",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const suffix = Date.now().toString();",
+                  "pm.collectionVariables.set('_tenantName',      'acme-'    + suffix);",
+                  "pm.collectionVariables.set('_otherTenantName', 'startup-' + suffix);"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "pm.test('status 201', () => pm.response.to.have.status(201));",
-                  "const b = pm.response.json();",
-                  "pm.test('has id + name + api_key', () => {",
-                  "  pm.expect(b.id).to.be.a('string');",
-                  "  pm.expect(b.name).to.eql('my-app');",
-                  "  pm.expect(b.api_key).to.match(/^ff-/);",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('has id, name, api_key', () => {",
+                  "  pm.expect(rd.id).to.be.a('string');",
+                  "  pm.expect(rd.name).to.eql(pm.collectionVariables.get('_tenantName'));",
+                  "  pm.expect(rd.api_key).to.match(/^ff-[0-9a-f]{64}$/);",
                   "});",
-                  "pm.test('has 3 environments', () => {",
-                  "  pm.expect(b.environments).to.have.lengthOf(3);",
-                  "  const names = b.environments.map(e => e.name);",
-                  "  pm.expect(names).to.include.members(['development','staging','production']);",
+                  "pm.test('3 environments auto-provisioned', () => {",
+                  "  pm.expect(rd.environments).to.have.lengthOf(3);",
+                  "  const names = rd.environments.map(e => e.name);",
+                  "  ['development','staging','production'].forEach(n => pm.expect(names).to.include(n));",
                   "});",
-                  "// Save for subsequent requests",
-                  "pm.collectionVariables.set('tenantId', b.id);",
-                  "pm.collectionVariables.set('apiKey', b.api_key);"
+                  "pm.collectionVariables.set('tenantId',   rd.id);",
+                  "pm.collectionVariables.set('apiKey',     rd.api_key);",
+                  "pm.collectionVariables.set('tenantName', rd.name);"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "POST /tenants → 409 duplicate name",
+          ],
           "request": {
             "method": "POST",
             "url": "{{baseUrl}}/api/v1/tenants",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{ \"name\": \"my-app\" }" }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"name\": \"{{_tenantName}}\" }"
+            }
+          }
+        },
+        {
+          "name": "POST /tenants \u2192 409 duplicate name",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"name\": \"{{_tenantName}}\" }"
+            }
           },
           "event": [
             {
@@ -91,47 +155,133 @@
               "script": {
                 "exec": [
                   "pm.test('status 409', () => pm.response.to.have.status(409));",
-                  "pm.test('message says already taken', () => {",
-                  "  pm.expect(pm.response.json().message).to.match(/already taken/i);",
+                  "const { success, error } = pm.response.json();",
+                  "pm.test('success false', () => pm.expect(success).to.be.false);",
+                  "pm.test('CONFLICT code', () => pm.expect(error.code).to.eql('CONFLICT'));",
+                  "pm.test('message mentions taken', () => pm.expect(error.message).to.match(/already taken/i));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tenants \u2192 400 missing name field",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { success, error } = pm.response.json();",
+                  "pm.test('success false', () => pm.expect(success).to.be.false);",
+                  "pm.test('BAD_REQUEST code', () => pm.expect(error.code).to.eql('BAD_REQUEST'));",
+                  "pm.test('message Validation failed', () => pm.expect(error.message).to.eql('Validation failed'));",
+                  "pm.test('details array present', () => pm.expect(error.details).to.be.an('array').and.have.length.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tenants \u2192 400 name too short (1 char)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"name\": \"x\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tenants \u2192 400 name too long (101 chars)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"name\": \"aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeaaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeX\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tenants \u2192 400 unknown field rejected (forbidNonWhitelisted)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"name\": \"valid-name\", \"extra\": \"field\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { success, error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));",
+                  "pm.test('details contain the offending property name', () => {",
+                  "  pm.expect(error.details).to.be.an('array').and.have.length.above(0);",
+                  "  pm.expect(error.details[0]).to.match(/should not exist/i);",
                   "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /tenants → 400 missing name",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/api/v1/tenants",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{}" }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 400', () => pm.response.to.have.status(400));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /tenants → 400 name too short",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/api/v1/tenants",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{ \"name\": \"x\" }" }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 400', () => pm.response.to.have.status(400));"
                 ]
               }
             }
@@ -140,10 +290,10 @@
       ]
     },
     {
-      "name": "Auth",
+      "name": "02 \u00b7 Auth",
       "item": [
         {
-          "name": "GET /flags → 401 no auth header",
+          "name": "GET /flags \u2192 401 no Authorization header",
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags"
@@ -153,43 +303,86 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "const { success, error } = pm.response.json();",
+                  "pm.test('success false', () => pm.expect(success).to.be.false);",
+                  "pm.test('UNAUTHORIZED', () => pm.expect(error.code).to.eql('UNAUTHORIZED'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "GET /flags → 401 invalid key",
+          "name": "GET /flags \u2192 401 malformed Bearer (missing space)",
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
-            "header": [{ "key": "Authorization", "value": "Bearer ff-invalid-key-000" }]
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearerff-badtoken"
+              }
+            ]
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('UNAUTHORIZED', () => pm.expect(error.code).to.eql('UNAUTHORIZED'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "GET /flags → 200 valid key",
+          "name": "GET /flags \u2192 401 invalid API key (valid format, wrong hash)",
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
-            "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }]
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer ff-0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            ]
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('UNAUTHORIZED', () => pm.expect(error.code).to.eql('UNAUTHORIZED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /flags \u2192 200 valid API key",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('data is array', () => pm.expect(rd).to.be.an('array'));"
                 ]
               }
             }
@@ -198,20 +391,26 @@
       ]
     },
     {
-      "name": "Flags",
+      "name": "03 \u00b7 Flags \u2014 Create",
       "item": [
         {
-          "name": "POST /flags → 201 create boolean flag",
+          "name": "POST /flags \u2192 201 boolean flag dark-mode",
           "request": {
             "method": "POST",
             "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"key\": \"dark-mode\",\n  \"name\": \"Dark Mode\",\n  \"description\": \"Enable dark mode UI\",\n  \"type\": \"boolean\",\n  \"defaultValue\": false\n}"
+              "raw": "{\n  \"key\": \"dark-mode\",\n  \"name\": \"Dark Mode\",\n  \"description\": \"Enable dark UI theme\",\n  \"type\": \"boolean\",\n  \"defaultValue\": false\n}"
             }
           },
           "event": [
@@ -220,25 +419,37 @@
               "script": {
                 "exec": [
                   "pm.test('status 201', () => pm.response.to.have.status(201));",
-                  "const b = pm.response.json();",
-                  "pm.test('flag created', () => {",
-                  "  pm.expect(b.key).to.eql('dark-mode');",
-                  "  pm.expect(b.type).to.eql('boolean');",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('flag fields', () => {",
+                  "  pm.expect(rd.id).to.be.a('string');",
+                  "  pm.expect(rd.key).to.eql('dark-mode');",
+                  "  pm.expect(rd.type).to.eql('boolean');",
+                  "  pm.expect(rd.createdAt).to.be.a('string');",
                   "});",
-                  "pm.collectionVariables.set('flagKey', b.key);"
+                  "pm.test('3 environments provisioned, all disabled by default', () => {",
+                  "  pm.expect(rd.environments).to.have.lengthOf(3);",
+                  "  rd.environments.forEach(e => pm.expect(e.enabled).to.be.false);",
+                  "});"
                 ]
               }
             }
           ]
         },
         {
-          "name": "POST /flags → 201 create string flag",
+          "name": "POST /flags \u2192 201 string flag pricing-layout",
           "request": {
             "method": "POST",
             "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -250,373 +461,33 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('status 201', () => pm.response.to.have.status(201));"
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('string type', () => pm.expect(rd.type).to.eql('string'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "POST /flags → 201 with rollout %",
+          "name": "POST /flags \u2192 201 number flag max-upload-mb",
           "request": {
             "method": "POST",
             "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"key\": \"new-checkout\",\n  \"name\": \"New Checkout Flow\",\n  \"type\": \"boolean\",\n  \"defaultValue\": false,\n  \"environments\": {\n    \"production\": { \"enabled\": true, \"rolloutPercentage\": 10 },\n    \"staging\":    { \"enabled\": true, \"rolloutPercentage\": 100 }\n  }\n}"
+              "raw": "{\n  \"key\": \"max-upload-mb\",\n  \"name\": \"Max Upload Size MB\",\n  \"type\": \"number\",\n  \"defaultValue\": 10\n}"
             }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 201', () => pm.response.to.have.status(201));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "GET /flags → 200 list all",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
-            "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }]
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "GET /flags → 200 filter by environment",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags?environment=production",
-              "query": [{ "key": "environment", "value": "production" }]
-            },
-            "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }]
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "GET /flags → 200 filter by status=active",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags?status=active",
-              "query": [{ "key": "status", "value": "active" }]
-            },
-            "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }]
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "PUT /flags/:key → 200 toggle on + set rollout",
-          "request": {
-            "method": "PUT",
-            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/{{flagKey}}",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"environment\": \"production\",\n  \"enabled\": true,\n  \"rolloutPercentage\": 25\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "PUT /flags/:key → 200 add targeting rules",
-          "request": {
-            "method": "PUT",
-            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/{{flagKey}}",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"environment\": \"production\",\n  \"enabled\": true,\n  \"rules\": {\n    \"userOverrides\": { \"alice\": true, \"bob\": false },\n    \"contextRules\": [\n      { \"field\": \"plan\", \"operator\": \"eq\", \"value\": \"premium\", \"rolloutPercentage\": 100 }\n    ]\n  }\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "DELETE /flags/:key → 200 archive",
-          "request": {
-            "method": "DELETE",
-            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/{{flagKey}}",
-            "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }]
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('flag archived', () => {",
-                  "  pm.expect(pm.response.json().archivedAt).to.be.a('string');",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "GET /flags → archived not in active list",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags?status=active",
-              "query": [{ "key": "status", "value": "active" }]
-            },
-            "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }]
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('archived flag excluded', () => {",
-                  "  const keys = pm.response.json().map(f => f.key);",
-                  "  pm.expect(keys).to.not.include(pm.collectionVariables.get('flagKey'));",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Evaluation",
-      "item": [
-        {
-          "name": "POST /evaluate → boolean flag for user",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/api/v1/evaluate",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"environment\": \"production\",\n  \"flagKey\": \"new-checkout\",\n  \"userId\": \"user-alice-123\",\n  \"context\": { \"plan\": \"premium\", \"country\": \"BD\" }\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('has value', () => {",
-                  "  const b = pm.response.json();",
-                  "  pm.expect(b.value).to.be.oneOf([true, false]);",
-                  "  pm.expect(b.flagKey).to.eql('new-checkout');",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /evaluate → deterministic (same user = same result)",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/api/v1/evaluate",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"environment\": \"production\",\n  \"flagKey\": \"new-checkout\",\n  \"userId\": \"user-alice-123\",\n  \"context\": {}\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "pre-request",
-              "script": {
-                "exec": [
-                  "// Store first result to compare with second call",
-                  "pm.collectionVariables.set('firstEvalResult', '');"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "const val = pm.response.json().value;",
-                  "const prev = pm.collectionVariables.get('firstEvalResult');",
-                  "if (prev === '') {",
-                  "  pm.collectionVariables.set('firstEvalResult', String(val));",
-                  "  pm.test('first call stored', () => pm.expect(val).to.not.be.undefined);",
-                  "} else {",
-                  "  pm.test('deterministic — same value as first call', () => {",
-                  "    pm.expect(String(val)).to.eql(prev);",
-                  "  });",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /evaluate/bulk → all flags for user",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/api/v1/evaluate/bulk",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"environment\": \"production\",\n  \"userId\": \"user-alice-123\",\n  \"context\": { \"plan\": \"premium\" }\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('returns object of flag values', () => {",
-                  "  const b = pm.response.json();",
-                  "  pm.expect(b).to.be.an('object');",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /evaluate → user override forces true",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/api/v1/evaluate",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"environment\": \"production\",\n  \"flagKey\": \"new-checkout\",\n  \"userId\": \"alice\",\n  \"context\": {}\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('user override applied', () => {",
-                  "  pm.expect(pm.response.json().value).to.eql(true);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Audit",
-      "item": [
-        {
-          "name": "GET /flags/:key/history → audit log",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/{{flagKey}}/history",
-            "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }]
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('returns array of audit entries', () => {",
-                  "  const b = pm.response.json();",
-                  "  pm.expect(b).to.be.an('array');",
-                  "  if (b.length > 0) {",
-                  "    pm.expect(b[0]).to.have.keys(['id','action','changedBy','oldValue','newValue','createdAt']);",
-                  "    pm.expect(b[0].action).to.be.oneOf(['created','updated','archived']);",
-                  "  }",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Tenant Isolation",
-      "item": [
-        {
-          "name": "Create second tenant",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/api/v1/tenants",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{ \"name\": \"other-app\" }" }
           },
           "event": [
             {
@@ -624,29 +495,1658 @@
               "script": {
                 "exec": [
                   "pm.test('status 201', () => pm.response.to.have.status(201));",
-                  "const b = pm.response.json();",
-                  "pm.collectionVariables.set('otherTenantId', b.id);",
-                  "pm.collectionVariables.set('otherApiKey', b.api_key);"
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('number type', () => pm.expect(rd.type).to.eql('number'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Tenant B key → cannot access Tenant A flags",
+          "name": "POST /flags \u2192 201 boolean flag new-checkout",
           "request": {
-            "method": "GET",
+            "method": "POST",
             "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
-            "header": [{ "key": "Authorization", "value": "Bearer {{otherApiKey}}" }]
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"new-checkout\",\n  \"name\": \"New Checkout Flow\",\n  \"type\": \"boolean\",\n  \"defaultValue\": false\n}"
+            }
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('403 or 401 — cross-tenant blocked', () => {",
-                  "  pm.expect(pm.response.code).to.be.oneOf([401, 403]);",
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('new-checkout created', () => pm.expect(rd.key).to.eql('new-checkout'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /flags \u2192 201 boolean flag old-nav (will be archived later)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"old-nav\",\n  \"name\": \"Old Navigation\",\n  \"description\": \"Legacy nav \u2014 will be archived\",\n  \"type\": \"boolean\",\n  \"defaultValue\": false\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('old-nav created', () => pm.expect(rd.key).to.eql('old-nav'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /flags \u2192 409 duplicate key",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"key\": \"dark-mode\", \"name\": \"Dark Mode v2\", \"type\": \"boolean\", \"defaultValue\": false }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "const { success, error } = pm.response.json();",
+                  "pm.test('success false', () => pm.expect(success).to.be.false);",
+                  "pm.test('CONFLICT', () => pm.expect(error.code).to.eql('CONFLICT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /flags \u2192 400 key contains uppercase",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"key\": \"Dark-Mode\", \"name\": \"Bad Key\", \"type\": \"boolean\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /flags \u2192 400 key starts with hyphen",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"key\": \"-bad-key\", \"name\": \"Bad Key\", \"type\": \"boolean\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /flags \u2192 400 invalid type",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"key\": \"bad-flag\", \"name\": \"Bad Flag\", \"type\": \"json\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /flags \u2192 400 unknown field (environments not accepted on create)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"key\": \"some-flag\", \"name\": \"Some Flag\", \"type\": \"boolean\", \"environments\": { \"production\": { \"enabled\": true } } }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400 \u2014 use PUT /flags/:key after creation to configure per-env settings', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));",
+                  "pm.test('details name the offending field', () => pm.expect(error.details[0]).to.match(/should not exist/i));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 \u00b7 Flags \u2014 Configure (PUT per-environment settings)",
+      "item": [
+        {
+          "name": "PUT dark-mode \u2192 enable in production at 50% rollout",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/dark-mode",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"enabled\": true,\n  \"rolloutPercentage\": 50\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('environment, enabled, rolloutPercentage returned', () => {",
+                  "  pm.expect(rd.environment).to.eql('production');",
+                  "  pm.expect(rd.enabled).to.be.true;",
+                  "  pm.expect(rd.rolloutPercentage).to.eql(50);",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT dark-mode \u2192 enable in staging at 100% rollout",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/dark-mode",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"staging\",\n  \"enabled\": true,\n  \"rolloutPercentage\": 100\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('staging 100%', () => {",
+                  "  pm.expect(rd.environment).to.eql('staging');",
+                  "  pm.expect(rd.rolloutPercentage).to.eql(100);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT new-checkout \u2192 production: enabled, user overrides + context rule",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/new-checkout",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"enabled\": true,\n  \"rolloutPercentage\": 100,\n  \"rules\": {\n    \"userOverrides\": { \"alice\": true, \"blocked-user\": false },\n    \"contextRules\": [\n      { \"field\": \"plan\", \"operator\": \"eq\", \"value\": \"premium\", \"rolloutPercentage\": 100 }\n    ]\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('rules saved', () => {",
+                  "  pm.expect(rd.rules).to.be.an('object');",
+                  "  pm.expect(rd.rules.userOverrides).to.deep.eql({ alice: true, 'blocked-user': false });",
+                  "  pm.expect(rd.rules.contextRules).to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT max-upload-mb \u2192 enable in production (number flag)",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/max-upload-mb",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"enabled\": true\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('enabled', () => pm.expect(rd.enabled).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT \u2192 404 flag does not exist",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/does-not-exist",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"environment\": \"production\", \"enabled\": true }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('NOT_FOUND', () => pm.expect(error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT \u2192 400 missing environment field",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/dark-mode",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"enabled\": true }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT \u2192 400 invalid environment value",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/dark-mode",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"environment\": \"test\", \"enabled\": true }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT \u2192 400 rolloutPercentage out of range (> 100)",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/dark-mode",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"environment\": \"production\", \"rolloutPercentage\": 110 }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 \u00b7 Flags \u2014 Read",
+      "item": [
+        {
+          "name": "GET /flags \u2192 list all (5 flags)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('5 flags', () => pm.expect(rd).to.have.lengthOf(5));",
+                  "pm.test('each flag has id, key, name, type, createdAt', () => {",
+                  "  rd.forEach(f => {",
+                  "    pm.expect(f.id).to.be.a('string');",
+                  "    pm.expect(f.key).to.be.a('string');",
+                  "    pm.expect(f.type).to.be.oneOf(['boolean','string','number']);",
+                  "    pm.expect(f.createdAt).to.be.a('string');",
+                  "  });",
+                  "});",
+                  "pm.test('no env-specific fields without ?environment filter', () => {",
+                  "  rd.forEach(f => {",
+                  "    pm.expect(f.enabled).to.be.undefined;",
+                  "    pm.expect(f.rolloutPercentage).to.be.undefined;",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /flags?environment=production \u2192 includes enabled + rolloutPercentage + defaultValue",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags?environment=production",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('each flag has env fields', () => {",
+                  "  rd.forEach(f => {",
+                  "    pm.expect(f).to.have.property('enabled');",
+                  "    pm.expect(f).to.have.property('rolloutPercentage');",
+                  "    pm.expect(f).to.have.property('defaultValue');",
+                  "  });",
+                  "});",
+                  "const darkMode = rd.find(f => f.key === 'dark-mode');",
+                  "pm.test('dark-mode is enabled in production at 50%', () => {",
+                  "  pm.expect(darkMode.enabled).to.be.true;",
+                  "  pm.expect(darkMode.rolloutPercentage).to.eql(50);",
+                  "});",
+                  "const pricing = rd.find(f => f.key === 'pricing-layout');",
+                  "pm.test('pricing-layout is disabled (never configured)', () => {",
+                  "  pm.expect(pricing.enabled).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /flags?status=active \u2192 returns all 5 (none archived yet)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags?status=active",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('5 active flags', () => pm.expect(rd).to.have.lengthOf(5));",
+                  "pm.test('none have archivedAt set', () => rd.forEach(f => pm.expect(f.archivedAt).to.be.null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /flags?status=archived \u2192 empty (none archived yet)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags?status=archived",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('empty array', () => pm.expect(rd).to.have.lengthOf(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /flags?environment=invalid \u2192 400 BAD_REQUEST",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags?environment=invalid",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /flags?status=invalid \u2192 400 BAD_REQUEST",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags?status=invalid",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 \u00b7 Flags \u2014 Archive",
+      "item": [
+        {
+          "name": "DELETE old-nav \u2192 200 archivedAt set",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/old-nav",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('key returned', () => pm.expect(rd.key).to.eql('old-nav'));",
+                  "pm.test('archivedAt is a timestamp string', () => pm.expect(rd.archivedAt).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /flags?status=active \u2192 4 flags (old-nav excluded)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags?status=active",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('4 active flags', () => pm.expect(rd).to.have.lengthOf(4));",
+                  "pm.test('old-nav not present', () => {",
+                  "  const keys = rd.map(f => f.key);",
+                  "  pm.expect(keys).to.not.include('old-nav');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /flags?status=archived \u2192 1 flag (old-nav only)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags?status=archived",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('1 archived flag', () => pm.expect(rd).to.have.lengthOf(1));",
+                  "pm.test('flag is old-nav with archivedAt set', () => {",
+                  "  pm.expect(rd[0].key).to.eql('old-nav');",
+                  "  pm.expect(rd[0].archivedAt).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE \u2192 404 flag does not exist",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/does-not-exist",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('NOT_FOUND', () => pm.expect(error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 \u00b7 Evaluation",
+      "item": [
+        {
+          "name": "POST /evaluate \u2192 dark-mode boolean result with reason",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"dark-mode\",\n  \"userId\": \"user-123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('flagKey echoed', () => pm.expect(rd.flagKey).to.eql('dark-mode'));",
+                  "pm.test('value is boolean', () => pm.expect(rd.value).to.be.oneOf([true, false]));",
+                  "pm.test('reason is ROLLOUT or DEFAULT', () => pm.expect(rd.reason).to.be.oneOf(['ROLLOUT','DEFAULT']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate \u2192 pricing-layout disabled \u2192 DISABLED reason",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"pricing-layout\",\n  \"userId\": \"user-123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('reason DISABLED', () => pm.expect(rd.reason).to.eql('DISABLED'));",
+                  "pm.test('value is defaultValue (control)', () => pm.expect(rd.value).to.eql('control'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate \u2192 new-checkout userId=alice \u2192 USER_OVERRIDE true",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"new-checkout\",\n  \"userId\": \"alice\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('value true (user override)', () => pm.expect(rd.value).to.be.true);",
+                  "pm.test('reason USER_OVERRIDE', () => pm.expect(rd.reason).to.eql('USER_OVERRIDE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate \u2192 new-checkout userId=blocked-user \u2192 USER_OVERRIDE false",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"new-checkout\",\n  \"userId\": \"blocked-user\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('value false (blocked user override)', () => pm.expect(rd.value).to.be.false);",
+                  "pm.test('reason USER_OVERRIDE', () => pm.expect(rd.reason).to.eql('USER_OVERRIDE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate \u2192 new-checkout context plan=premium \u2192 CONTEXT_RULE true",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"new-checkout\",\n  \"userId\": \"user-premium-xyz\",\n  \"context\": { \"plan\": \"premium\" }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('value true (context rule matched)', () => pm.expect(rd.value).to.be.true);",
+                  "pm.test('reason CONTEXT_RULE', () => pm.expect(rd.reason).to.eql('CONTEXT_RULE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate \u2192 new-checkout context plan=free \u2192 ROLLOUT (falls through to 100%)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"new-checkout\",\n  \"userId\": \"user-free-abc\",\n  \"context\": { \"plan\": \"free\" }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('value true (100% rollout)', () => pm.expect(rd.value).to.be.true);",
+                  "pm.test('reason ROLLOUT', () => pm.expect(rd.reason).to.eql('ROLLOUT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate \u2192 max-upload-mb returns number value",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"max-upload-mb\",\n  \"userId\": \"user-123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('value is a number', () => pm.expect(rd.value).to.be.a('number'));",
+                  "pm.test('value is defaultValue (10)', () => pm.expect(rd.value).to.eql(10));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate \u2192 dark-mode determinism run 1 (stores result)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"dark-mode\",\n  \"userId\": \"deterministic-user-42\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('_deterministicResult', '');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.collectionVariables.set('_deterministicResult', String(rd.value));",
+                  "pm.test('result stored', () => pm.expect(rd.value).to.be.oneOf([true, false]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate \u2192 dark-mode determinism run 2 (same user = same result)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"dark-mode\",\n  \"userId\": \"deterministic-user-42\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "const prev = pm.collectionVariables.get('_deterministicResult');",
+                  "pm.test('same result as run 1 \u2014 hash is deterministic', () => {",
+                  "  pm.expect(String(rd.value)).to.eql(prev);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate/bulk \u2192 object with all active flag keys",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate/bulk",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"userId\": \"user-123\",\n  \"context\": { \"plan\": \"free\" }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('data is object (flag key \u2192 value map)', () => pm.expect(rd).to.be.an('object'));",
+                  "pm.test('includes all 4 active flags (old-nav archived, not included)', () => {",
+                  "  ['dark-mode','pricing-layout','max-upload-mb','new-checkout'].forEach(k => {",
+                  "    pm.expect(rd).to.have.property(k);",
+                  "  });",
+                  "  pm.expect(rd).to.not.have.property('old-nav');",
+                  "});",
+                  "pm.test('max-upload-mb value is a number', () => pm.expect(rd['max-upload-mb']).to.be.a('number'));",
+                  "pm.test('pricing-layout value is a string', () => pm.expect(rd['pricing-layout']).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate \u2192 404 unknown flagKey",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"no-such-flag\",\n  \"userId\": \"user-123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('NOT_FOUND', () => pm.expect(error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate \u2192 400 missing required fields",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"environment\": \"production\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));",
+                  "pm.test('details lists missing fields', () => pm.expect(error.details).to.be.an('array').and.have.length.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /evaluate/bulk \u2192 400 missing userId",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate/bulk",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"environment\": \"production\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('BAD_REQUEST', () => pm.expect(error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 \u00b7 Audit Trail",
+      "item": [
+        {
+          "name": "GET dark-mode/history \u2192 created + 2 updated entries",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/dark-mode/history",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const { success } = b; const rd = b.data;",
+                  "pm.test('success true', () => pm.expect(success).to.be.true);",
+                  "pm.test('at least 3 entries (created + 2 updates)', () => pm.expect(rd.length).to.be.at.least(3));",
+                  "pm.test('first entry is created', () => {",
+                  "  pm.expect(rd[0].action).to.eql('created');",
+                  "  pm.expect(rd[0].oldValue).to.be.null;",
+                  "  pm.expect(rd[0].newValue).to.be.an('object');",
+                  "});",
+                  "pm.test('update entries have oldValue and newValue', () => {",
+                  "  const updates = rd.filter(e => e.action === 'updated');",
+                  "  pm.expect(updates.length).to.be.at.least(2);",
+                  "  updates.forEach(u => {",
+                  "    pm.expect(u.oldValue).to.be.an('object');",
+                  "    pm.expect(u.newValue).to.be.an('object');",
+                  "    pm.expect(u.environmentId).to.be.a('string');",
+                  "  });",
+                  "});",
+                  "pm.test('changedBy is tenant name on all entries', () => {",
+                  "  const tenantName = pm.collectionVariables.get('tenantName');",
+                  "  rd.forEach(e => pm.expect(e.changedBy).to.eql(tenantName));",
+                  "});",
+                  "pm.test('entries are chronological', () => {",
+                  "  for (let i = 1; i < rd.length; i++) {",
+                  "    pm.expect(new Date(rd[i].createdAt).getTime())",
+                  "      .to.be.at.least(new Date(rd[i-1].createdAt).getTime());",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET old-nav/history \u2192 created + archived entries",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/old-nav/history",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('2 entries', () => pm.expect(rd).to.have.lengthOf(2));",
+                  "pm.test('first=created, second=archived', () => {",
+                  "  pm.expect(rd[0].action).to.eql('created');",
+                  "  pm.expect(rd[1].action).to.eql('archived');",
+                  "  pm.expect(rd[1].newValue).to.have.property('archivedAt');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET pricing-layout/history \u2192 only 1 created entry (never updated)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/pricing-layout/history",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.test('exactly 1 entry', () => pm.expect(rd).to.have.lengthOf(1));",
+                  "pm.test('action created, no oldValue', () => {",
+                  "  pm.expect(rd[0].action).to.eql('created');",
+                  "  pm.expect(rd[0].oldValue).to.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /history \u2192 404 flag does not exist",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/no-such-flag/history",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('NOT_FOUND', () => pm.expect(error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /history \u2192 401 no auth",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/dark-mode/history"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('UNAUTHORIZED', () => pm.expect(error.code).to.eql('UNAUTHORIZED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "09 \u00b7 Tenant Isolation",
+      "item": [
+        {
+          "name": "POST /tenants \u2192 201 create Tenant B (saves otherTenantId + otherApiKey)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"name\": \"{{_otherTenantName}}\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json(); const rd = b.data;",
+                  "pm.collectionVariables.set('otherTenantId', rd.id);",
+                  "pm.collectionVariables.set('otherApiKey',   rd.api_key);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tenant B: GET Tenant A flags \u2192 403 FORBIDDEN",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherApiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const { success, error } = pm.response.json();",
+                  "pm.test('success false', () => pm.expect(success).to.be.false);",
+                  "pm.test('FORBIDDEN', () => pm.expect(error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tenant B: POST flag for Tenant A \u2192 403 FORBIDDEN",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherApiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"key\": \"injected-flag\", \"name\": \"Injected\", \"type\": \"boolean\" }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('FORBIDDEN', () => pm.expect(error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tenant B: PUT Tenant A flag \u2192 403 FORBIDDEN",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/dark-mode",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherApiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"environment\": \"production\", \"enabled\": false }"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('FORBIDDEN', () => pm.expect(error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tenant B: DELETE Tenant A flag \u2192 403 FORBIDDEN",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/dark-mode",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherApiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('FORBIDDEN', () => pm.expect(error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tenant B: GET Tenant A flag history \u2192 403 FORBIDDEN",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/tenants/{{tenantId}}/flags/dark-mode/history",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherApiKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('FORBIDDEN', () => pm.expect(error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tenant B: evaluate a flag only in Tenant A \u2192 404 (key isolation)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/evaluate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{otherApiKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"environment\": \"production\",\n  \"flagKey\": \"dark-mode\",\n  \"userId\": \"user-123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 404 \u2014 dark-mode belongs to Tenant A, invisible to Tenant B', () => pm.response.to.have.status(404));",
+                  "const { error } = pm.response.json();",
+                  "pm.test('NOT_FOUND', () => pm.expect(error.code).to.eql('NOT_FOUND'));"
                 ]
               }
             }
