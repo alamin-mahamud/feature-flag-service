@@ -34,3 +34,11 @@ coverage/
 
 # misc
 *.log
+
+# compiled prisma seed
+prisma/seed.js
+prisma/seed.js.map
+prisma/seed.d.ts
+
+# typescript incremental build info
+tsconfig.build.tsbuildinfo
