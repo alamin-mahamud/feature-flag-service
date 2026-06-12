@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  apiKeyHash String   @map("api_key_hash")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  environments Environment[]
+  flags        Flag[]
+  auditLogs    AuditLog[]
+
+  @@map("tenants")
+}
+
+model Environment {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  name     String // "development" | "staging" | "production"
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  flagEnvironments FlagEnvironment[]
+  auditLogs        AuditLog[]
+
+  @@unique([tenantId, name])
+  @@map("environments")
+}
+
+model Flag {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  key         String
+  name        String
+  description String?
+  type        String    // "boolean" | "string" | "number"
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  archivedAt  DateTime? @map("archived_at")
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  flagEnvironments FlagEnvironment[]
+  auditLogs        AuditLog[]
+
+  @@unique([tenantId, key])
+  @@map("flags")
+}
+
+model FlagEnvironment {
+  id                String   @id @default(uuid())
+  flagId            String   @map("flag_id")
+  environmentId     String   @map("environment_id")
+  enabled           Boolean  @default(false)
+  defaultValue      Json?    @map("default_value")
+  rolloutPercentage Int?     @map("rollout_percentage")
+  rules             Json?    // JSONB: user overrides + context rules
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  flag        Flag        @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  environment Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
+  @@unique([flagId, environmentId])
+  @@map("flag_environments")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  flagId        String   @map("flag_id")
+  environmentId String?  @map("environment_id")
+  action        String   // "created" | "updated" | "archived"
+  changedBy     String   @map("changed_by")
+  oldValue      Json?    @map("old_value")
+  newValue      Json     @map("new_value")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  flag        Flag         @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  environment Environment? @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
