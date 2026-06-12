@@ -47,6 +47,56 @@ describe('computeBucket', () => {
     expect(count).toBeGreaterThanOrEqual(60);
     expect(count).toBeLessThanOrEqual(140);
   });
+
+  // ── Consistent-hashing properties ──────────────────────────────────────────
+
+  it('monotonic rollout: users included at a lower % are always included at a higher %', () => {
+    // This is the core "consistent" guarantee: increasing rolloutPercentage
+    // only ever ADDS users to the included set — it never ejects users who
+    // were already in. Verified by checking that the included set at each
+    // threshold is a superset of every smaller threshold.
+    const users = Array.from({ length: 1000 }, (_, i) => `user-${i}`);
+    const thresholds = [10, 25, 50, 75];
+
+    const includedAt = (pct: number) =>
+      new Set(users.filter((u) => computeBucket('ramp-flag', u) < pct));
+
+    for (let i = 0; i < thresholds.length - 1; i++) {
+      const smaller = includedAt(thresholds[i]);
+      const larger = includedAt(thresholds[i + 1]);
+      // Every user included at the smaller threshold must also be in the larger.
+      smaller.forEach((u) => expect(larger.has(u)).toBe(true));
+      // The larger set must have grown.
+      expect(larger.size).toBeGreaterThan(smaller.size);
+    }
+  });
+
+  it('flag-key independence: bucket assignments across different flags are uncorrelated', () => {
+    // A user in the 0–30 bucket for flag-a should not be systematically more
+    // likely to also be in 0–30 for flag-b. Test by comparing observed
+    // overlap to expected overlap under independence (30% × 30% = ~9%).
+    const N = 1000;
+    const users = Array.from({ length: N }, (_, i) => `user-${i}`);
+
+    const inFlagA = new Set(users.filter((u) => computeBucket('flag-a', u) < 30));
+    const inFlagB = new Set(users.filter((u) => computeBucket('flag-b', u) < 30));
+    const overlap = users.filter((u) => inFlagA.has(u) && inFlagB.has(u)).length;
+
+    // Under independence, expected overlap ≈ 0.3 × 0.3 × 1000 = 90.
+    // Allow ±50% tolerance (45–135) to avoid flakiness.
+    expect(overlap).toBeGreaterThanOrEqual(45);
+    expect(overlap).toBeLessThanOrEqual(135);
+  });
+
+  it('hash regression: known flag+user pairs produce stable bucket values', () => {
+    // If the hash function ever changes (algorithm, encoding, input format),
+    // these will fail — a deliberate break of existing user assignments.
+    expect(computeBucket('dark-mode', 'alice')).toBe(72);
+    expect(computeBucket('dark-mode', 'bob')).toBe(50);
+    expect(computeBucket('checkout-v2', 'alice')).toBe(90);
+    expect(computeBucket('checkout-v2', 'bob')).toBe(69);
+    expect(computeBucket('dark-mode', 'user-42')).toBe(18);
+  });
 });
 
 // ─── evaluate: disabled ─────────────────────────────────────────────────────
