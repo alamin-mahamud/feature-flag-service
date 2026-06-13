@@ -159,6 +159,20 @@ make load-test      # k6 load test (requires k6 + running app + LOAD_TEST_API_KE
 
 35 e2e tests cover: tenant CRUD, flag CRUD, evaluation engine (determinism, distribution, rules), audit trail, tenant isolation.
 
+### Load Test Results (GCP staging, Cloud Run + Cloud SQL + Redis)
+
+k6, 4-stage ramp: 20 → 50 → 100 VUs → 0, 2m30s total, `POST /evaluate/bulk`
+
+| Metric | Result | Threshold |
+|--------|--------|-----------|
+| p(95) latency | **399 ms** | < 500 ms ✓ |
+| p(99) latency | **503 ms** | < 1000 ms ✓ |
+| Error rate | **0.00%** | < 1% ✓ |
+| Throughput | **~80 req/s** | — |
+| Total requests | **11,969** | — |
+
+Cold-start spike: max 29.4 s on first requests (Cloud Run min-instances=0); median steady-state 292 ms.
+
 ## Security
 
 - API keys hashed with SHA-256 — raw key never stored
