@@ -13,6 +13,7 @@ module "cloud_sql" {
   vpc_id      = module.networking.vpc_id
   db_password = var.db_password
   tier        = "db-g1-small"
+  depends_on  = [module.networking]
 }
 
 module "redis" {
@@ -22,6 +23,7 @@ module "redis" {
   region         = var.region
   vpc_id         = module.networking.vpc_id
   memory_size_gb = 2
+  depends_on     = [module.networking]
 }
 
 module "secrets" {
@@ -45,6 +47,19 @@ module "cloud_run" {
   max_instances           = 20
   latest_traffic_percent  = var.canary_percent
   stable_revision         = var.stable_revision
+  throttle_limit          = 1000
 }
 
-output "service_url" { value = module.cloud_run.service_url }
+module "monitoring" {
+  source                       = "../../modules/monitoring"
+  project_id                   = var.project_id
+  env                          = "production"
+  region                       = var.region
+  cloud_run_service_name       = module.cloud_run.service_name
+  alert_email                  = var.alert_email
+  latency_p99_threshold_ms     = 500
+  error_rate_threshold_percent = 1
+}
+
+output "service_url"   { value = module.cloud_run.service_url }
+output "dashboard_url" { value = module.monitoring.dashboard_url }

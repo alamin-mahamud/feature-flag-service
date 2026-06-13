@@ -265,7 +265,7 @@ resource "google_monitoring_dashboard" "main" {
               {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "resource.type=\"global\" AND metric.type=\"custom.googleapis.com/feature_flag_service/evaluation/latency_ms\""
+                    filter = "resource.type=\"generic_node\" AND metric.type=\"custom.googleapis.com/feature_flag_service/evaluation.latency_ms\""
                     aggregation = {
                       alignmentPeriod    = "60s"
                       perSeriesAligner   = "ALIGN_DELTA"
@@ -279,7 +279,7 @@ resource "google_monitoring_dashboard" "main" {
               {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "resource.type=\"global\" AND metric.type=\"custom.googleapis.com/feature_flag_service/evaluation/latency_ms\""
+                    filter = "resource.type=\"generic_node\" AND metric.type=\"custom.googleapis.com/feature_flag_service/evaluation.latency_ms\""
                     aggregation = {
                       alignmentPeriod    = "60s"
                       perSeriesAligner   = "ALIGN_DELTA"
@@ -293,7 +293,7 @@ resource "google_monitoring_dashboard" "main" {
               {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "resource.type=\"global\" AND metric.type=\"custom.googleapis.com/feature_flag_service/evaluation/latency_ms\""
+                    filter = "resource.type=\"generic_node\" AND metric.type=\"custom.googleapis.com/feature_flag_service/evaluation.latency_ms\""
                     aggregation = {
                       alignmentPeriod    = "60s"
                       perSeriesAligner   = "ALIGN_DELTA"
@@ -317,7 +317,7 @@ resource "google_monitoring_dashboard" "main" {
               {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "resource.type=\"global\" AND metric.type=\"custom.googleapis.com/feature_flag_service/evaluation/count\""
+                    filter = "resource.type=\"generic_node\" AND metric.type=\"custom.googleapis.com/feature_flag_service/evaluation.count\""
                     aggregation = {
                       alignmentPeriod    = "60s"
                       perSeriesAligner   = "ALIGN_RATE"
@@ -342,7 +342,7 @@ resource "google_monitoring_dashboard" "main" {
               {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "resource.type=\"global\" AND metric.type=\"custom.googleapis.com/feature_flag_service/cache/hits\""
+                    filter = "resource.type=\"generic_node\" AND metric.type=\"custom.googleapis.com/feature_flag_service/cache.hits\""
                     aggregation = {
                       alignmentPeriod   = "60s"
                       perSeriesAligner  = "ALIGN_RATE"
@@ -356,7 +356,7 @@ resource "google_monitoring_dashboard" "main" {
               {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "resource.type=\"global\" AND metric.type=\"custom.googleapis.com/feature_flag_service/cache/misses\""
+                    filter = "resource.type=\"generic_node\" AND metric.type=\"custom.googleapis.com/feature_flag_service/cache.misses\""
                     aggregation = {
                       alignmentPeriod   = "60s"
                       perSeriesAligner  = "ALIGN_RATE"
@@ -380,7 +380,7 @@ resource "google_monitoring_dashboard" "main" {
               {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "resource.type=\"global\" AND metric.type=\"custom.googleapis.com/feature_flag_service/errors/count\""
+                    filter = "resource.type=\"generic_node\" AND metric.type=\"custom.googleapis.com/feature_flag_service/errors.count\""
                     aggregation = {
                       alignmentPeriod    = "60s"
                       perSeriesAligner   = "ALIGN_RATE"

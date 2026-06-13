@@ -16,3 +16,8 @@ variable "stable_revision" {
   type    = string
   default = ""
 }
+variable "alert_email" {
+  type        = string
+  default     = "project.bagdad@gmail.com"
+  description = "Email to receive alert notifications"
+}
