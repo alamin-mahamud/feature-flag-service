@@ -53,6 +53,7 @@ module "monitoring" {
   env                    = "staging"
   region                 = var.region
   cloud_run_service_name = module.cloud_run.service_name
+  cloud_run_service_url  = module.cloud_run.service_url
   alert_email            = var.alert_email
 }
 

@@ -116,7 +116,7 @@ resource "google_monitoring_uptime_check_config" "health" {
     type = "uptime_url"
     labels = {
       project_id = var.project_id
-      host       = "${var.cloud_run_service_name}-${var.project_id}.${var.region}.run.app"
+      host       = trimprefix(var.cloud_run_service_url, "https://")
     }
   }
 }

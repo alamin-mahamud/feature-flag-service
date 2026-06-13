@@ -9,6 +9,10 @@ variable "env" {
 variable "cloud_run_service_name" {
   type = string
 }
+variable "cloud_run_service_url" {
+  type        = string
+  description = "Full HTTPS URL of the Cloud Run service, e.g. https://foo-abc123-uc.a.run.app"
+}
 
 variable "region" {
   type = string

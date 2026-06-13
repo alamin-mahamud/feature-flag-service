@@ -56,6 +56,7 @@ module "monitoring" {
   env                          = "production"
   region                       = var.region
   cloud_run_service_name       = module.cloud_run.service_name
+  cloud_run_service_url        = module.cloud_run.service_url
   alert_email                  = var.alert_email
   latency_p99_threshold_ms     = 500
   error_rate_threshold_percent = 1
