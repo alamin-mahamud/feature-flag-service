@@ -15,7 +15,6 @@ jobs:
     name: Build & push Docker image
     runs-on: ubuntu-latest
     outputs:
-      image: ${{ steps.meta.outputs.tags }}
       digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +68,7 @@ jobs:
       - name: Deploy to Cloud Run (staging)
         run: |
           gcloud run deploy feature-flag-service-staging \
-            --image "${{ needs.push-image.outputs.image }}" \
+            --image "${{ env.REGION }}-docker.pkg.dev/${{ env.IMAGE_REPO }}@${{ needs.push-image.outputs.digest }}" \
             --region ${{ env.REGION }} \
             --platform managed
 
@@ -102,7 +101,7 @@ jobs:
       - name: Deploy canary (10% traffic)
         run: |
           gcloud run deploy feature-flag-service-production \
-            --image "${{ needs.push-image.outputs.image }}" \
+            --image "${{ env.REGION }}-docker.pkg.dev/${{ env.IMAGE_REPO }}@${{ needs.push-image.outputs.digest }}" \
             --region ${{ env.REGION }} \
             --platform managed \
             --no-traffic
