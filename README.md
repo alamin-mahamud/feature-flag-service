@@ -1,10 +1,12 @@
 # Feature Flag Service
 
-A multi-tenant feature flag and configuration service — think simplified LaunchDarkly. Built as a take-home exercise, but designed and deployed the way I'd build it for production.
+A multi-tenant feature flag and configuration service.
 
 **Live URLs**
-- Staging: https://feature-flag-service-staging-ebcnipowiq-uc.a.run.app/health
+
 - Production: https://feature-flag-service-production-ebcnipowiq-uc.a.run.app/health
+- Staging: https://feature-flag-service-staging-ebcnipowiq-uc.a.run.app/health
+- Swagger UI (production): https://feature-flag-service-production-ebcnipowiq-uc.a.run.app/api/docs
 - Swagger UI (staging): https://feature-flag-service-staging-ebcnipowiq-uc.a.run.app/api/docs
 
 ---
@@ -101,24 +103,24 @@ I cache at the **flag definition** level (`flags:{tenantId}:{environment}` → a
 
 ### Canary over blue-green
 
-Cloud Run's traffic splitting API is revision-based, which makes canary the natural model. For a v*-tagged release, the pipeline deploys the new revision with `--no-traffic`, then sets it to 10% / stable to 90%. The rollback command and promote command are printed to the job log on every deploy. Blue-green would require two separate Cloud Run services and a load balancer in front, which adds cost and complexity for no meaningful benefit here.
+Cloud Run's traffic splitting API is revision-based, which makes canary the natural model. For a v\*-tagged release, the pipeline deploys the new revision with `--no-traffic`, then sets it to 10% / stable to 90%. The rollback command and promote command are printed to the job log on every deploy. Blue-green would require two separate Cloud Run services and a load balancer in front, which adds cost and complexity for no meaningful benefit here.
 
 ---
 
 ## API Reference
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/health` | — | Health check (includes DB ping) |
-| GET | `/api/docs` | — | Swagger UI |
-| POST | `/api/v1/tenants` | — | Create tenant, get API key (returned once) |
-| POST | `/api/v1/tenants/:id/flags` | Bearer | Create flag |
-| GET | `/api/v1/tenants/:id/flags` | Bearer | List flags (`?environment=` `?status=active\|archived`) |
-| PUT | `/api/v1/tenants/:id/flags/:key` | Bearer | Configure flag for an environment |
-| DELETE | `/api/v1/tenants/:id/flags/:key` | Bearer | Archive flag (soft-delete) |
-| GET | `/api/v1/tenants/:id/flags/:key/history` | Bearer | Chronological audit trail |
-| POST | `/api/v1/evaluate` | Bearer | Evaluate one flag for a user |
-| POST | `/api/v1/evaluate/bulk` | Bearer | Evaluate all active flags for a user |
+| Method | Path                                     | Auth   | Description                                             |
+| ------ | ---------------------------------------- | ------ | ------------------------------------------------------- |
+| GET    | `/health`                                | —      | Health check (includes DB ping)                         |
+| GET    | `/api/docs`                              | —      | Swagger UI                                              |
+| POST   | `/api/v1/tenants`                        | —      | Create tenant, get API key (returned once)              |
+| POST   | `/api/v1/tenants/:id/flags`              | Bearer | Create flag                                             |
+| GET    | `/api/v1/tenants/:id/flags`              | Bearer | List flags (`?environment=` `?status=active\|archived`) |
+| PUT    | `/api/v1/tenants/:id/flags/:key`         | Bearer | Configure flag for an environment                       |
+| DELETE | `/api/v1/tenants/:id/flags/:key`         | Bearer | Archive flag (soft-delete)                              |
+| GET    | `/api/v1/tenants/:id/flags/:key/history` | Bearer | Chronological audit trail                               |
+| POST   | `/api/v1/evaluate`                       | Bearer | Evaluate one flag for a user                            |
+| POST   | `/api/v1/evaluate/bulk`                  | Bearer | Evaluate all active flags for a user                    |
 
 **Note on tenant_id in evaluate requests:** The spec mentions `tenant_id` in the request body, but since the tenant is already identified by the bearer token, I made the decision to derive it from auth context rather than requiring it in the body. This avoids a class of bugs where body `tenant_id` and token don't match.
 
@@ -281,17 +283,32 @@ All resources provisioned via Terraform in `terraform/environments/{staging,prod
 
 ### Canary deployment
 
-Every `v*` tag triggers the production deploy job. It:
-1. Deploys the new image with `--no-traffic` (new revision gets 0%)
-2. Fetches the name of the currently-serving revision
-3. Splits traffic: new=10%, stable=90%
-4. Prints rollback and promote commands to the job log
+Every `v*` tag triggers the production deploy job in CI. It deploys the new revision with `--no-traffic`, then sets it to 10% / stable 90%. From there, you promote manually as confidence grows:
 
-To promote: `gcloud run services update-traffic feature-flag-service-production --region=us-central1 --to-latest`
+```bash
+# 1. Tag and push — pipeline deploys at 10% automatically
+git tag v1.2.3 && git push origin v1.2.3
 
-To rollback: `gcloud run services update-traffic feature-flag-service-production --region=us-central1 --to-revisions=<STABLE_REVISION>=100`
+# 2. Watch the dashboard for a few minutes
+make canary-status
+# REVISION                                  PERCENT  LATEST
+# feature-flag-service-production-00007-abc  10
+# feature-flag-service-production-00006-xyz  90
 
-`dev-v*` tags deploy directly to staging at 100%.
+# 3. Metrics look good — step up
+make canary-promote PERCENT=25
+make canary-promote PERCENT=50
+make canary-promote PERCENT=100
+# or in one step once you're confident:
+make canary-full
+
+# At any step, if error rate spikes or p99 climbs:
+make canary-rollback   # sends 100% back to the previous stable revision
+```
+
+**What to watch between steps** — the Cloud Monitoring dashboard shows the canary's share of traffic in real time. The alert policies will fire an email if error rate exceeds 5% or p99 goes above threshold, so you don't have to stare at the dashboard manually.
+
+`dev-v*` tags deploy directly to staging at 100% (no canary).
 
 ---
 
@@ -303,12 +320,12 @@ I wired this up as a first-class concern rather than adding it at the end.
 
 **Custom metrics via OpenTelemetry** — `src/tracing.ts` is imported as the very first line of `main.ts` so OTel patches are in place before NestJS bootstraps. Instruments:
 
-| Metric | Type | Labels |
-|--------|------|--------|
-| `evaluation.latency_ms` | Histogram | `tenant_id`, `type` (single/bulk) |
-| `evaluation.count` | Counter | `tenant_id`, `type` |
-| `cache.hits` / `cache.misses` | Counter | `tenant_id` |
-| `errors.count` | Counter | `tenant_id`, `endpoint`, `status_code` |
+| Metric                        | Type      | Labels                                 |
+| ----------------------------- | --------- | -------------------------------------- |
+| `evaluation.latency_ms`       | Histogram | `tenant_id`, `type` (single/bulk)      |
+| `evaluation.count`            | Counter   | `tenant_id`, `type`                    |
+| `cache.hits` / `cache.misses` | Counter   | `tenant_id`                            |
+| `errors.count`                | Counter   | `tenant_id`, `endpoint`, `status_code` |
 
 The Cloud Monitoring exporter runs every 60s and is only activated when `K_SERVICE` or `GOOGLE_CLOUD_PROJECT` env vars are present, so local dev and CI don't need GCP credentials.
 
@@ -334,6 +351,7 @@ make load-test      # k6 script (requires k6 installed + LOAD_TEST_API_KEY)
 **Load test** (`test/load/evaluate.js`) — k6 with a 4-stage ramp to 100 VUs against the live staging Cloud Run service. This caught the per-tenant rate limiter issue immediately (100 req/min default killed the test at 100 VUs) and validated the Redis cache was actually working under load.
 
 **What I'd add with more time:**
+
 - A test that verifies `correlationId` appears in log output for every request type
 - Negative tests: malformed rules JSONB, context fields with null values, rolloutPercentage=0 and =100 edge cases
 - A test for the audit trail `changedBy` field (currently uses the API key prefix — I'd want to verify it's never the full raw key)
@@ -343,13 +361,13 @@ make load-test      # k6 script (requires k6 installed + LOAD_TEST_API_KEY)
 
 k6, 4-stage ramp: 20 → 50 → 100 VUs → 0 over 2m30s, `POST /evaluate/bulk` (10 active flags per tenant)
 
-| Metric | Result | Threshold |
-|--------|--------|-----------|
-| p95 latency | **399 ms** | < 500 ms ✓ |
-| p99 latency | **503 ms** | < 1000 ms ✓ |
-| Error rate | **0.00%** | < 1% ✓ |
-| Throughput | **~80 req/s** | — |
-| Total requests | **~25,000** | — |
+| Metric         | Result        | Threshold   |
+| -------------- | ------------- | ----------- |
+| p95 latency    | **399 ms**    | < 500 ms ✓  |
+| p99 latency    | **503 ms**    | < 1000 ms ✓ |
+| Error rate     | **0.00%**     | < 1% ✓      |
+| Throughput     | **~80 req/s** | —           |
+| Total requests | **~25,000**   | —           |
 
 Cold-start spike: first requests hit ~29s (Cloud Run min-instances=0 on staging). Steady-state median ~292ms. Cache hit rate was ~94% — nearly all evaluations served from Redis after the first request per tenant.
 

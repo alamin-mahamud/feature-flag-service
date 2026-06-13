@@ -142,6 +142,45 @@ health: ## Check if app is running
 clean: ## Remove build artifacts
 	rm -rf dist coverage
 
+# ─── Canary management ────────────────────────────────────────────────────────
+# Workflow after a v* tag deploy (starts at 10%):
+#   make canary-status           — see current split
+#   make canary-promote PERCENT=25
+#   make canary-promote PERCENT=50
+#   make canary-promote PERCENT=100  (or: make canary-full)
+#   On issues at any step: make canary-rollback
+
+REGION  ?= us-central1
+SERVICE ?= feature-flag-service-production
+
+.PHONY: canary-status
+canary-status: ## Show current production traffic split
+	@gcloud run services describe $(SERVICE) --region=$(REGION) \
+	  --format="table(status.traffic[].revisionName,status.traffic[].percent,status.traffic[].latestRevision)"
+
+.PHONY: canary-promote
+canary-promote: ## Increase canary traffic. Usage: make canary-promote PERCENT=25
+	$(eval CANARY := $(shell gcloud run revisions list --service=$(SERVICE) --region=$(REGION) \
+	  --sort-by="~metadata.creationTimestamp" --limit=1 --format="value(metadata.name)"))
+	$(eval STABLE := $(shell gcloud run revisions list --service=$(SERVICE) --region=$(REGION) \
+	  --sort-by="~metadata.creationTimestamp" --limit=2 --format="value(metadata.name)" | tail -1))
+	@echo "canary=$(CANARY)  stable=$(STABLE)  split=$(PERCENT)/$(shell echo $$((100-$(PERCENT))))%"
+	gcloud run services update-traffic $(SERVICE) --region=$(REGION) \
+	  --to-revisions="$(CANARY)=$(PERCENT),$(STABLE)=$(shell echo $$((100-$(PERCENT))))"
+
+.PHONY: canary-full
+canary-full: ## Promote canary to 100% (--to-latest)
+	gcloud run services update-traffic $(SERVICE) --region=$(REGION) --to-latest
+	@echo "Canary at 100%."
+
+.PHONY: canary-rollback
+canary-rollback: ## Roll back: send 100% of traffic to the previous stable revision
+	$(eval STABLE := $(shell gcloud run revisions list --service=$(SERVICE) --region=$(REGION) \
+	  --sort-by="~metadata.creationTimestamp" --limit=2 --format="value(metadata.name)" | tail -1))
+	@echo "Rolling back to $(STABLE)"
+	gcloud run services update-traffic $(SERVICE) --region=$(REGION) \
+	  --to-revisions="$(STABLE)=100"
+
 .PHONY: help
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\nTargets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
