@@ -7,7 +7,7 @@ terraform {
     }
   }
   backend "gcs" {
-    bucket = "YOUR_PROJECT_ID-terraform-state"
+    bucket = "feature-flag-499220-tfstate"
     prefix = "feature-flag-service/staging"
   }
 }

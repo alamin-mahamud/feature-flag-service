@@ -5,7 +5,7 @@ resource "google_redis_instance" "cache" {
   region         = var.region
 
   authorized_network = var.vpc_id
-  connect_mode       = "PRIVATE_SERVICE_ACCESS"
+  connect_mode       = "DIRECT_PEERING"
 
   redis_version     = "REDIS_7_0"
   display_name      = "Feature Flag Service Cache (${var.env})"

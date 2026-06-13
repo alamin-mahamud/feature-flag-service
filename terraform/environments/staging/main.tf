@@ -13,6 +13,7 @@ module "cloud_sql" {
   vpc_id      = module.networking.vpc_id
   db_password = var.db_password
   tier        = "db-f1-micro"
+  depends_on  = [module.networking]
 }
 
 module "redis" {
@@ -21,6 +22,7 @@ module "redis" {
   env        = "staging"
   region     = var.region
   vpc_id     = module.networking.vpc_id
+  depends_on = [module.networking]
 }
 
 module "secrets" {
