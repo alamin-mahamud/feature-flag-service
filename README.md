@@ -11,9 +11,15 @@ A multi-tenant feature flag and configuration service.
 
 ## Screenshots
 
-| GitHub Actions (pipeline) | Swagger UI | Cloud Monitoring dashboard |
-|---|---|---|
-| ![Pipeline](docs/screenshots/pipeline.png) | ![Swagger](docs/screenshots/swagger.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+**CI/CD Pipeline — all three jobs green**
+![Pipeline](docs/screenshots/pipeline.png)
+
+**Swagger UI — live on production**
+![Swagger](docs/screenshots/swagger.png)
+
+**Cloud Monitoring dashboard — real traffic from load tests**
+![Dashboard 1](docs/screenshots/dashboard-1.png)
+![Dashboard 2](docs/screenshots/dashboard-2.png)
 
 ---
 
