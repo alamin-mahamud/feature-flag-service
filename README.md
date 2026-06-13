@@ -9,6 +9,12 @@ A multi-tenant feature flag and configuration service.
 - Swagger UI (production): https://feature-flag-service-production-ebcnipowiq-uc.a.run.app/api/docs
 - Swagger UI (staging): https://feature-flag-service-staging-ebcnipowiq-uc.a.run.app/api/docs
 
+## Screenshots
+
+| GitHub Actions (pipeline) | Swagger UI | Cloud Monitoring dashboard |
+|---|---|---|
+| ![Pipeline](docs/screenshots/pipeline.png) | ![Swagger](docs/screenshots/swagger.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+
 ---
 
 ## Quick Start
@@ -123,6 +129,8 @@ Cloud Run's traffic splitting API is revision-based, which makes canary the natu
 | POST   | `/api/v1/evaluate/bulk`                  | Bearer | Evaluate all active flags for a user                    |
 
 **Note on tenant_id in evaluate requests:** The spec mentions `tenant_id` in the request body, but since the tenant is already identified by the bearer token, I made the decision to derive it from auth context rather than requiring it in the body. This avoids a class of bugs where body `tenant_id` and token don't match.
+
+A **[Postman collection](docs/feature-flag-service.postman_collection.json)** covering every endpoint is included in the repo. Import it into Postman, set the `baseUrl` variable (default `http://localhost:3000`) and the `apiKey` variable returned from `POST /api/v1/tenants`, then run the collection in order.
 
 ### Walkthrough
 
@@ -338,9 +346,11 @@ The Cloud Monitoring exporter runs every 60s and is only activated when `K_SERVI
 ```bash
 make test           # unit tests (rule engine, determinism)
 make test-e2e       # integration tests (requires DB + Redis via docker compose)
-make test-api       # Newman/Postman collection smoke test
-make load-test      # k6 script (requires k6 installed + LOAD_TEST_API_KEY)
+make test-api       # Newman/Postman collection smoke test (requires: npm install -g newman)
+make load-test      # k6 load test (requires k6 + running app + LOAD_TEST_API_KEY env var)
 ```
+
+The Postman collection (`docs/feature-flag-service.postman_collection.json`) covers every endpoint end-to-end — create tenant, create flags, evaluate, bulk-evaluate, view audit history. Import it directly into Postman or run it headlessly via `make test-api`.
 
 ### What I tested and why
 
