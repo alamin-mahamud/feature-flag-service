@@ -71,8 +71,7 @@ jobs:
           gcloud run deploy feature-flag-service-staging \
             --image "${{ needs.push-image.outputs.image }}" \
             --region ${{ env.REGION }} \
-            --platform managed \
-            --traffic=100
+            --platform managed
 
   deploy-production:
     name: Deploy to production (canary 10%)
