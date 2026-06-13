@@ -78,9 +78,15 @@ describe('computeBucket', () => {
     const N = 1000;
     const users = Array.from({ length: N }, (_, i) => `user-${i}`);
 
-    const inFlagA = new Set(users.filter((u) => computeBucket('flag-a', u) < 30));
-    const inFlagB = new Set(users.filter((u) => computeBucket('flag-b', u) < 30));
-    const overlap = users.filter((u) => inFlagA.has(u) && inFlagB.has(u)).length;
+    const inFlagA = new Set(
+      users.filter((u) => computeBucket('flag-a', u) < 30),
+    );
+    const inFlagB = new Set(
+      users.filter((u) => computeBucket('flag-b', u) < 30),
+    );
+    const overlap = users.filter(
+      (u) => inFlagA.has(u) && inFlagB.has(u),
+    ).length;
 
     // Under independence, expected overlap ≈ 0.3 × 0.3 × 1000 = 90.
     // Allow ±50% tolerance (45–135) to avoid flakiness.

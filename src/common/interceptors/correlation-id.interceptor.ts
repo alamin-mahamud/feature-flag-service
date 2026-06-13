@@ -7,6 +7,7 @@ import {
 import { Observable } from 'rxjs';
 import { randomUUID } from 'crypto';
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { requestContext } from '../logger/request-context';
 
 type RequestWithCorrelation = FastifyRequest & { correlationId?: string };
 
@@ -21,6 +22,12 @@ export class CorrelationIdInterceptor implements NestInterceptor {
     req.correlationId = correlationId;
     res.header('x-request-id', correlationId);
 
-    return next.handle();
+    // Thread correlationId into AsyncLocalStorage so every log call
+    // within this request's call stack includes it automatically.
+    return new Observable((subscriber) => {
+      requestContext.run({ correlationId }, () => {
+        next.handle().subscribe(subscriber);
+      });
+    });
   }
 }

@@ -1,3 +1,4 @@
+import './tracing'; // must be first — patches modules before NestJS loads them
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -9,12 +10,23 @@ import fastifyHelmet from '@fastify/helmet';
 import { AppModule } from './app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { CorrelationIdInterceptor } from './common/interceptors/correlation-id.interceptor';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { requestContext } from './common/logger/request-context';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: { level: process.env.LOG_LEVEL ?? 'info' } }),
+    new FastifyAdapter({
+      logger: {
+        level: process.env.LOG_LEVEL ?? 'info',
+        // Inject correlationId from AsyncLocalStorage into every Pino log line.
+        // Cloud Logging picks this up automatically — use it to filter all logs
+        // for a single request: jsonPayload.correlationId="<id>"
+        mixin() {
+          const ctx = requestContext.getStore();
+          return ctx ? { correlationId: ctx.correlationId } : {};
+        },
+      },
+    }),
   );
 
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
@@ -39,8 +51,6 @@ async function bootstrap() {
     new CorrelationIdInterceptor(),
     new TransformInterceptor(),
   );
-  app.useGlobalFilters(new HttpExceptionFilter());
-
   const config = new DocumentBuilder()
     .setTitle('Feature Flag Service')
     .setDescription(

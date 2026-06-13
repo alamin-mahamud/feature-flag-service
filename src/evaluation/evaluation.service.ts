@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { MetricsService } from '../common/metrics/metrics.service';
 import { computeBucket, evaluate, FlagInput } from './rule-engine';
 import { EvaluateDto } from './dto/evaluate.dto';
 import { EvaluateBulkDto } from './dto/evaluate-bulk.dto';
@@ -24,9 +25,11 @@ export class EvaluationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async evaluate(tenantId: string, dto: EvaluateDto) {
+    const start = Date.now();
     const rows = await this.loadFlags(tenantId, dto.environment);
     const row = rows.find((r) => r.flag.key === dto.flagKey);
 
@@ -35,10 +38,16 @@ export class EvaluationService {
     }
 
     const result = evaluate(toFlagInput(row), dto.userId, dto.context ?? {});
+    this.metrics.recordEvaluation({
+      tenantId,
+      latencyMs: Date.now() - start,
+      type: 'single',
+    });
     return { flagKey: dto.flagKey, ...result };
   }
 
   async evaluateBulk(tenantId: string, dto: EvaluateBulkDto) {
+    const start = Date.now();
     const rows = await this.loadFlags(tenantId, dto.environment);
     const out: Record<string, unknown> = {};
 
@@ -51,6 +60,11 @@ export class EvaluationService {
       out[row.flag.key] = value;
     }
 
+    this.metrics.recordEvaluation({
+      tenantId,
+      latencyMs: Date.now() - start,
+      type: 'bulk',
+    });
     return out;
   }
 
@@ -69,8 +83,12 @@ export class EvaluationService {
   ): Promise<FlagEnvRow[]> {
     const cacheKey = `flags:${tenantId}:${environment}`;
     const cached = await this.cache.get<CachedFlags>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      this.metrics.recordCacheHit(tenantId);
+      return cached;
+    }
 
+    this.metrics.recordCacheMiss(tenantId);
     const rows = await this.prisma.flagEnvironment.findMany({
       where: {
         environment: { tenantId, name: environment },

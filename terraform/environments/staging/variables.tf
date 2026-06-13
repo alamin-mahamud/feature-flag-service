@@ -8,3 +8,8 @@ variable "db_password" {
   type      = string
   sensitive = true
 }
+variable "alert_email" {
+  type        = string
+  default     = "project.bagdad@gmail.com"
+  description = "Email to receive alert notifications"
+}

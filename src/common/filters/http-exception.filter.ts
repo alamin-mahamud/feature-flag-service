@@ -4,9 +4,12 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Injectable,
   Logger,
 } from '@nestjs/common';
-import { FastifyReply } from 'fastify';
+import { FastifyReply, FastifyRequest } from 'fastify';
+import { MetricsService } from '../metrics/metrics.service';
+import type { TenantRequest } from '../types/tenant-request';
 
 const STATUS_CODES: Record<number, string> = {
   400: 'BAD_REQUEST',
@@ -19,13 +22,17 @@ const STATUS_CODES: Record<number, string> = {
   500: 'INTERNAL_SERVER_ERROR',
 };
 
+@Injectable()
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
 
+  constructor(private readonly metrics: MetricsService) {}
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const reply = ctx.getResponse<FastifyReply>();
+    const req = ctx.getRequest<FastifyRequest & Partial<TenantRequest>>();
 
     const status =
       exception instanceof HttpException
@@ -43,7 +50,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message = res;
       } else if (typeof res === 'object' && res !== null) {
         const r = res as Record<string, unknown>;
-        // class-validator produces { message: string[] }
         if (Array.isArray(r['message'])) {
           message = 'Validation failed';
           details = r['message'];
@@ -53,6 +59,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     } else if (exception instanceof Error) {
       this.logger.error(exception.message, exception.stack);
+    }
+
+    // Only record 5xx errors and 429s as "errors" — 4xx client mistakes are
+    // expected traffic and shouldn't page on-call.
+    if (status >= 500 || status === 429) {
+      const tenantId = req.tenant?.id ?? 'unknown';
+      const endpoint = req.routeOptions?.url ?? req.url ?? 'unknown';
+      this.metrics.recordError({ tenantId, endpoint, statusCode: status });
     }
 
     reply.status(status).send({

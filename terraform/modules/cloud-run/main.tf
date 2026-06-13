@@ -86,3 +86,10 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
+# Allow the Cloud Run SA to write custom metrics to Cloud Monitoring
+resource "google_project_iam_member" "metrics_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.cloud_run.email}"
+}

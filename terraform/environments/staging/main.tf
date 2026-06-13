@@ -46,4 +46,14 @@ module "cloud_run" {
   max_instances        = 3
 }
 
-output "service_url" { value = module.cloud_run.service_url }
+module "monitoring" {
+  source                 = "../../modules/monitoring"
+  project_id             = var.project_id
+  env                    = "staging"
+  region                 = var.region
+  cloud_run_service_name = module.cloud_run.service_name
+  alert_email            = var.alert_email
+}
+
+output "service_url"   { value = module.cloud_run.service_url }
+output "dashboard_url" { value = module.monitoring.dashboard_url }
