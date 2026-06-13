@@ -1,7 +1,7 @@
 # Build stage
 FROM node:24-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
+COPY package*.json .npmrc ./
 RUN npm ci
 COPY prisma ./prisma
 RUN npx prisma generate
