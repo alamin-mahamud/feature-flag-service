@@ -48,6 +48,11 @@ resource "google_cloud_run_v2_service" "api" {
         value = "production"
       }
 
+      env {
+        name  = "THROTTLE_LIMIT"
+        value = tostring(var.throttle_limit)
+      }
+
       resources {
         limits = {
           cpu    = "1"

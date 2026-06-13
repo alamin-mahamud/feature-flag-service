@@ -44,6 +44,7 @@ module "cloud_run" {
   redis_url_secret_id  = module.secrets.redis_url_secret_id
   min_instances        = 0
   max_instances        = 3
+  throttle_limit       = 10000
 }
 
 module "monitoring" {

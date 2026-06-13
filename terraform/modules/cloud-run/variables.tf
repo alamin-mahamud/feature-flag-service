@@ -21,3 +21,7 @@ variable "stable_revision" {
   type    = string
   default = ""
 }
+variable "throttle_limit" {
+  type    = number
+  default = 100
+}
