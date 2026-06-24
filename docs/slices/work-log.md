@@ -1,4 +1,4 @@
-# Work Log (local only — not committed)
+# Work Log
 
 ## Slice 0: Foundation — DONE
 - NestJS + Fastify, Prisma 6, docker-compose, health endpoint, Dockerfile
